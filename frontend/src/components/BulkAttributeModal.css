@@ -1,0 +1,70 @@
+.bulk-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+  animation: bulkFadeIn 0.2s ease forwards;
+}
+
+.bulk-modal {
+  width: 700px;
+  max-width: 94%;
+  background: var(--bg-surface);
+  border-radius: var(--radius-xl);
+  padding: 28px;
+  box-shadow: var(--shadow-xl);
+  border: 1px solid var(--border-light);
+  animation: bulkPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.bulk-modal h2 {
+  color: var(--text-main);
+  margin-bottom: 10px;
+}
+
+.bulk-description {
+  color: var(--text-muted);
+  margin-bottom: 20px;
+  font-size: 0.9rem;
+}
+
+.bulk-modal textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 240px;
+}
+
+.bulk-buttons {
+  margin-top: 24px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.secondary-btn {
+  background: var(--bg-elevated);
+  color: var(--text-main);
+  border: 1px solid var(--border-light);
+  box-shadow: none;
+}
+
+.secondary-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  box-shadow: none;
+  transform: none;
+}
+
+@keyframes bulkFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes bulkPop {
+  from { opacity: 0; transform: translateY(16px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}

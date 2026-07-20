@@ -1,0 +1,9 @@
+{
+  "plugins": ["react"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "style": "off",
+    "pedantic": "off"
+  }
+}
