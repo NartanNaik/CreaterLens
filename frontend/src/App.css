@@ -1,267 +1,36 @@
-/* ===========================
-   App.css — Premium Professional Theme
-=========================== */
-
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-
 :root {
-  /* Professional Light Theme — Indigo / Slate */
-  --bg-page: #f1f5f9;
-  --bg-surface: #ffffff;
-  --bg-elevated: #f8fafc;
-  --bg-hover: #f1f5f9;
-
-  --primary: #4f46e5;
-  --primary-hover: #4338ca;
-  --primary-light: #eef2ff;
-  --primary-container: #e0e7ff;
-  --on-primary-container: #312e81;
-
-  --text-main: #1e293b;
-  --text-muted: #64748b;
-  --text-subtle: #94a3b8;
-
-  --border-light: #e2e8f0;
-  --border-medium: #cbd5e1;
-  --border-focus: #a5b4fc;
-
-  --success: #059669;
-  --success-bg: #ecfdf5;
-  --danger: #dc2626;
-  --danger-bg: #fef2f2;
-  --warning: #d97706;
-  --warning-bg: #fffbeb;
-
-  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
-  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
-  --shadow-lg: 0 10px 25px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
-  --shadow-xl: 0 20px 40px -5px rgba(0, 0, 0, 0.1);
-
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 20px;
-  --radius-full: 999px;
+  /* Core Pink Theme */
+  --primary-color: #ec4899; /* Vibrant Pink */
+  --primary-hover: #db2777; /* Deep Pink for buttons */
+  --secondary-color: #fbcfe8; /* Soft Pink */
+  
+  /* Background & Glassmorphism */
+  --bg-color: #fdf2f8; /* Very light pink background */
+  --glass-bg: rgba(253, 242, 248, 0.65); /* Translucent pink for panels */
+  --glass-border: rgba(236, 72, 153, 0.2); /* Subtle pink borders */
+  
+  /* Text Colors */
+  --text-main: #831843; /* Dark pink/magenta for readability */
+  --text-muted: #be185d; 
+  --text-light: #ffffff;
+  
+  /* Status Colors */
+  --status-yes: #10b981; /* Keep green for positive/playable */
+  --status-no: #ef4444; /* Keep red for negative */
 }
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
+/* Base body background */
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background-color: var(--bg-page);
+  background-color: var(--bg-color);
   color: var(--text-main);
-  line-height: 1.6;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
-h2, h3 {
-  color: var(--text-main);
-  font-weight: 600;
-  letter-spacing: -0.025em;
-}
-
-h2 { font-size: 1.5rem; }
-h3 { font-size: 1.125rem; }
-
-hr {
-  border: none;
-  height: 1px;
-  background: var(--border-light);
-  margin: 28px 0;
-}
-
-/* ===========================
-   Global Form Elements
-=========================== */
-
-input[type="text"],
-input[type="password"],
-textarea {
-  width: 100%;
-  background: var(--bg-surface);
-  border: 1.5px solid var(--border-light);
-  color: var(--text-main);
-  padding: 12px 16px;
-  border-radius: var(--radius-md);
-  font-size: 0.925rem;
-  font-family: inherit;
-  transition: all 0.2s ease;
-  outline: none;
-}
-
-input[type="text"]:hover,
-input[type="password"]:hover,
-textarea:hover {
-  border-color: var(--border-medium);
-}
-
-input[type="text"]:focus,
-input[type="password"]:focus,
-textarea:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
-}
-
-input[type="text"]::placeholder,
-input[type="password"]::placeholder,
-textarea::placeholder {
-  color: var(--text-subtle);
-}
-
-/* ===========================
-   Global Buttons
-=========================== */
-
-button {
-  background: var(--primary);
-  color: #ffffff;
-  border: none;
-  padding: 10px 20px;
-  border-radius: var(--radius-sm);
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  transition: all 0.2s ease;
-  font-family: inherit;
-}
-
-button:hover:not(:disabled) {
-  background: var(--primary-hover);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
-}
-
-button:active:not(:disabled) {
-  transform: translateY(0);
-  box-shadow: none;
-}
-
-button:disabled {
-  background: var(--border-light);
-  color: var(--text-subtle);
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
-}
-
-/* ===========================
-   Login Page
-=========================== */
-
-.login-page {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, #eef2ff 0%, #f1f5f9 50%, #ecfdf5 100%);
-  padding: 20px;
-}
-
-.login-card {
-  width: 100%;
-  max-width: 420px;
-  background: var(--bg-surface);
-  border-radius: var(--radius-xl);
-  padding: 40px;
-  box-shadow: var(--shadow-xl);
-  border: 1px solid var(--border-light);
-  animation: loginSlideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-@keyframes loginSlideUp {
-  from { opacity: 0; transform: translateY(30px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.login-header {
-  text-align: center;
-  margin-bottom: 32px;
-}
-
-.login-logo {
-  width: 56px;
-  height: 56px;
-  background: linear-gradient(135deg, var(--primary), #7c3aed);
-  color: #ffffff;
-  border-radius: var(--radius-lg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 1.25rem;
-  margin: 0 auto 16px;
-  letter-spacing: -0.5px;
-}
-
-.login-header h1 {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--text-main);
-  margin-bottom: 4px;
-  letter-spacing: -0.025em;
-}
-
-.login-header p {
-  color: var(--text-muted);
-  font-size: 0.9rem;
-}
-
-.login-form {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.login-field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.login-field label {
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: var(--text-muted);
-}
-
-.login-submit {
-  width: 100%;
-  padding: 12px;
-  font-size: 0.95rem;
-  font-weight: 600;
-  border-radius: var(--radius-md);
-  margin-top: 4px;
-  background: linear-gradient(135deg, var(--primary), #6d28d9);
-}
-
-.login-submit:hover:not(:disabled) {
-  background: linear-gradient(135deg, var(--primary-hover), #5b21b6);
-  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
-}
-
-.login-error {
-  color: var(--danger);
-  font-size: 0.875rem;
-  font-weight: 500;
-  text-align: center;
-  padding: 10px;
-  background: var(--danger-bg);
-  border-radius: var(--radius-sm);
-  animation: shake 0.4s ease;
-}
-
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-6px); }
-  75% { transform: translateX(6px); }
+/* Glassmorphism utility class to apply to your modals and table containers */
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  box-shadow: 0 4px 6px rgba(131, 24, 67, 0.1);
 }

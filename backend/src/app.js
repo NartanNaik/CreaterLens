@@ -2,9 +2,9 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import authRoutes from "./routes/authRoutes.js";
-import usernameRoutes from "./routes/usernameRoutes.js";
+import profileRoutes from './routes/profileRoutes.js';
 import attributeRoutes from "./routes/attributeRoutes.js";
-import userRoutes from "./routes/userRoutes.js";
+import settingsRoutes from './routes/settingsRoutes.js';
 
 dotenv.config();
 
@@ -27,9 +27,9 @@ app.get("/", (req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
-app.use("/api/usernames", usernameRoutes);
+app.use('/api/profiles', profileRoutes);
 app.use("/api/attributes", attributeRoutes);
-app.use("/api/users", userRoutes);
+app.use('/api/settings', settingsRoutes);
 
 app.use((req, res) => {
   res.status(404).json({
