@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import "./FilterModal.css";
 
 function FilterModal({
   open,
@@ -23,23 +22,17 @@ function FilterModal({
   }
 
   return (
-    <div className="filter-overlay">
-      <div className="filter-modal">
-
-        <h2>
-          Filter Usernames
-        </h2>
+    <div className="modal-overlay">
+      <div className="glass-panel modal-content filter-modal">
+        <h2>Filter Usernames</h2>
 
         <div className="filter-options">
-
           <label>
             <input
               type="radio"
               value="name-asc"
               checked={filter === "name-asc"}
-              onChange={(e) =>
-                setFilter(e.target.value)
-              }
+              onChange={(e) => setFilter(e.target.value)}
             />
             Name (A → Z)
           </label>
@@ -49,9 +42,7 @@ function FilterModal({
               type="radio"
               value="name-desc"
               checked={filter === "name-desc"}
-              onChange={(e) =>
-                setFilter(e.target.value)
-              }
+              onChange={(e) => setFilter(e.target.value)}
             />
             Name (Z → A)
           </label>
@@ -61,9 +52,7 @@ function FilterModal({
               type="radio"
               value="nation-asc"
               checked={filter === "nation-asc"}
-              onChange={(e) =>
-                setFilter(e.target.value)
-              }
+              onChange={(e) => setFilter(e.target.value)}
             />
             Nation (A → Z)
           </label>
@@ -73,9 +62,7 @@ function FilterModal({
               type="radio"
               value="nation-desc"
               checked={filter === "nation-desc"}
-              onChange={(e) =>
-                setFilter(e.target.value)
-              }
+              onChange={(e) => setFilter(e.target.value)}
             />
             Nation (Z → A)
           </label>
@@ -85,9 +72,7 @@ function FilterModal({
               type="radio"
               value="interest-high"
               checked={filter === "interest-high"}
-              onChange={(e) =>
-                setFilter(e.target.value)
-              }
+              onChange={(e) => setFilter(e.target.value)}
             />
             Interest Rate (High → Low)
           </label>
@@ -97,9 +82,7 @@ function FilterModal({
               type="radio"
               value="interest-low"
               checked={filter === "interest-low"}
-              onChange={(e) =>
-                setFilter(e.target.value)
-              }
+              onChange={(e) => setFilter(e.target.value)}
             />
             Interest Rate (Low → High)
           </label>
@@ -109,9 +92,7 @@ function FilterModal({
               type="radio"
               value="today"
               checked={filter === "today"}
-              onChange={(e) =>
-                setFilter(e.target.value)
-              }
+              onChange={(e) => setFilter(e.target.value)}
             />
             Added Today
           </label>
@@ -121,9 +102,7 @@ function FilterModal({
               type="radio"
               value="week"
               checked={filter === "week"}
-              onChange={(e) =>
-                setFilter(e.target.value)
-              }
+              onChange={(e) => setFilter(e.target.value)}
             />
             Added This Week
           </label>
@@ -133,34 +112,26 @@ function FilterModal({
               type="radio"
               value="month"
               checked={filter === "month"}
-              onChange={(e) =>
-                setFilter(e.target.value)
-              }
+              onChange={(e) => setFilter(e.target.value)}
             />
             Added This Month
           </label>
-
         </div>
 
-        <div className="filter-buttons">
-
+        <div className="modal-actions filter-buttons">
           <button
-            onClick={() =>
-              onApply(filter)
-            }
-          >
-            Apply
-          </button>
-
-          <button
-            className="secondary-btn"
+            className="filter-cancel-btn"
             onClick={onClose}
           >
             Cancel
           </button>
-
+          <button
+            className="filter-apply-btn"
+            onClick={() => onApply(filter)}
+          >
+            Apply
+          </button>
         </div>
-
       </div>
     </div>
   );

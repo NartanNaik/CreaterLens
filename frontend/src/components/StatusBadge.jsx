@@ -1,5 +1,3 @@
-import "./StatusBadge.css";
-
 const statusOptions = [
   "Available",
   "Reserved",
@@ -21,27 +19,17 @@ function StatusBadge({
   editable = false,
   onChange
 }) {
-  const currentStatus =
-    statusOptions.includes(status)
-      ? status
-      : "Available";
+  const currentStatus = statusOptions.includes(status) ? status : "Available";
 
   if (editable) {
     return (
       <select
         className={`status-select ${statusColors[currentStatus]}`}
         value={currentStatus}
-        onChange={(e) =>
-          onChange(
-            e.target.value
-          )
-        }
+        onChange={(e) => onChange(e.target.value)}
       >
         {statusOptions.map((item) => (
-          <option
-            key={item}
-            value={item}
-          >
+          <option key={item} value={item}>
             {item}
           </option>
         ))}
@@ -50,9 +38,7 @@ function StatusBadge({
   }
 
   return (
-    <span
-      className={`status-badge ${statusColors[currentStatus]}`}
-    >
+    <span className={`status-badge ${statusColors[currentStatus]}`}>
       {currentStatus}
     </span>
   );

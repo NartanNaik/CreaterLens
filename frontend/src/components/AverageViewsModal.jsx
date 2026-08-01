@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 
 export default function AverageViewsModal({ isOpen, onClose, profileId, onSave }) {
-  // Array holding exactly 7 reel view inputs
   const [views, setViews] = useState(['', '', '', '', '', '', '']);
 
   if (!isOpen) return null;
@@ -12,18 +11,16 @@ export default function AverageViewsModal({ isOpen, onClose, profileId, onSave }
     setViews(newViews);
   };
 
-  // The built-in calculator logic
   const calculateAverage = () => {
-    // Convert strings to numbers, treating empty fields as 0
     const numericViews = views.map(v => Number(v) || 0);
     const sum = numericViews.reduce((a, b) => a + b, 0);
-    return Math.round(sum / 7); // Round to nearest whole number
+    return Math.round(sum / 7);
   };
 
   const handleSave = () => {
     const average = calculateAverage();
-    onSave(profileId, average); // Pass the calculated average back up
-    setViews(['', '', '', '', '', '', '']); // Reset fields
+    onSave(profileId, average);
+    setViews(['', '', '', '', '', '', '']);
     onClose();
   };
 
@@ -32,35 +29,35 @@ export default function AverageViewsModal({ isOpen, onClose, profileId, onSave }
       <div className="glass-panel modal-content">
         <h2>Calculate 7-Reel Average</h2>
         
-        <div className="reel-inputs-grid" style={{ display: 'grid', gap: '10px', marginTop: '15px' }}>
+        <div className="reel-inputs-grid">
           {views.map((view, index) => (
-            <div key={index} style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <div key={index} className="reel-input-row">
               <label>Reel {index + 1} Views:</label>
               <input 
                 type="number" 
                 value={view} 
                 onChange={(e) => handleInputChange(index, e.target.value)}
                 placeholder="e.g. 15000"
-                style={{ padding: '5px', borderRadius: '5px', border: '1px solid var(--glass-border)' }}
+                className="reel-input-field"
               />
             </div>
           ))}
         </div>
 
-        <div className="calculator-result" style={{ marginTop: '20px', textAlign: 'center' }}>
-          <h3>Current Average: <span style={{ color: 'var(--primary-color)' }}>{calculateAverage().toLocaleString()}</span></h3>
+        <div className="calculator-result">
+          <h3>Current Average: <span className="calculator-average-value">{calculateAverage().toLocaleString()}</span></h3>
         </div>
 
-        <div className="modal-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
+        <div className="modal-actions avg-modal-actions">
           <button 
             onClick={onClose}
-            style={{ padding: '8px 16px', background: 'transparent', border: '1px solid var(--primary-color)', color: 'var(--primary-color)', borderRadius: '5px' }}
+            className="avg-modal-cancel-btn"
           >
             Cancel
           </button>
           <button 
             onClick={handleSave}
-            style={{ padding: '8px 16px', background: 'var(--primary-color)', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}
+            className="avg-modal-save-btn"
           >
             Save Average
           </button>

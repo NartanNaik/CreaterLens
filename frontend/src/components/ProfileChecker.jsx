@@ -2,10 +2,9 @@ import React, { useState } from 'react';
 
 export default function ProfileChecker({ onProfileAdded, customColumns }) {
   const [username, setUsername] = useState('');
-  const [status, setStatus] = useState(null); // 'exists', 'available', or null
+  const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // Form state for all your specific new categories
   const [formData, setFormData] = useState({
     nation: '',
     skinTone: 'Fair',
@@ -45,8 +44,8 @@ export default function ProfileChecker({ onProfileAdded, customColumns }) {
       const payload = {
         ...formData,
         username,
-        playable: formData.playable === 'Yes', // Convert to boolean
-        avgViewsPerWeek: 0 // Default to 0 until the 7-reel calculator is used
+        playable: formData.playable === 'Yes',
+        avgViewsPerWeek: 0
       };
 
       const res = await fetch('/api/profiles/add', {
@@ -60,9 +59,8 @@ export default function ProfileChecker({ onProfileAdded, customColumns }) {
 
       if (res.ok) {
         const data = await res.json();
-        onProfileAdded(data.profile); // Update the dashboard table
+        onProfileAdded(data.profile);
         
-        // Reset form
         setUsername('');
         setStatus(null);
         setFormData({
@@ -77,74 +75,81 @@ export default function ProfileChecker({ onProfileAdded, customColumns }) {
   };
 
   return (
-    <div className="glass-panel" style={{ padding: '20px', marginBottom: '20px' }}>
-      <div style={{ display: 'flex', gap: '10px' }}>
+    <div className="glass-panel profile-checker-container">
+      <div className="checker-input-group">
         <input 
           type="text" 
           placeholder="Enter username to check..." 
           value={username} 
           onChange={(e) => {
             setUsername(e.target.value);
-            setStatus(null); // Reset status when typing
+            setStatus(null);
           }}
-          style={{ flex: 1, padding: '10px', borderRadius: '5px', border: '1px solid var(--glass-border)' }}
+          className="checker-input"
         />
         <button 
           onClick={handleCheck} 
           disabled={loading || !username}
-          style={{ padding: '10px 20px', background: 'var(--primary-color)', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}
+          className="checker-btn"
         >
           {loading ? 'Checking...' : 'Check Username'}
         </button>
       </div>
 
       {status === 'exists' && (
-        <p style={{ color: 'var(--status-no)', marginTop: '10px', fontWeight: 'bold' }}>
-          ⚠️ This user already exists in the database.
+        <p className="checker-warning-text">
+          <svg className="svg-icon warning-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+            <line x1="12" y1="9" x2="12" y2="13"></line>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          </svg>
+          This user already exists in the database.
         </p>
       )}
 
       {status === 'available' && (
-        <div style={{ marginTop: '20px', padding: '15px', background: 'var(--glass-bg)', borderRadius: '8px' }}>
-          <h3 style={{ marginTop: 0, color: 'var(--text-main)' }}>Available! Add Details:</h3>
+        <div className="checker-details-container">
+          <h3 className="checker-details-title">Available! Add Details:</h3>
           
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '15px' }}>
+          <div className="checker-form-grid">
+            <input type="text" placeholder="Nation" value={formData.nation} onChange={e => setFormData({...formData, nation: e.target.value})} className="checker-form-input" />
             
-            <input type="text" placeholder="Nation" value={formData.nation} onChange={e => setFormData({...formData, nation: e.target.value})} style={{ padding: '8px', borderRadius: '4px', border: '1px solid var(--glass-border)' }} />
-            
-            <select value={formData.skinTone} onChange={e => setFormData({...formData, skinTone: e.target.value})} style={{ padding: '8px', borderRadius: '4px' }}>
+            <select value={formData.skinTone} onChange={e => setFormData({...formData, skinTone: e.target.value})} className="checker-form-input">
               <option>Fair</option><option>Tan</option><option>Dark</option>
             </select>
 
-            <select value={formData.bodyType} onChange={e => setFormData({...formData, bodyType: e.target.value})} style={{ padding: '8px', borderRadius: '4px' }}>
+            <select value={formData.bodyType} onChange={e => setFormData({...formData, bodyType: e.target.value})} className="checker-form-input">
               <option>Fit</option><option>Slim</option><option>Fat</option><option>Curvy</option>
             </select>
 
-            <select value={formData.reelType} onChange={e => setFormData({...formData, reelType: e.target.value})} style={{ padding: '8px', borderRadius: '4px' }}>
+            <select value={formData.reelType} onChange={e => setFormData({...formData, reelType: e.target.value})} className="checker-form-input">
               <option>Hot</option><option>Erotic</option><option>Beautiful</option>
             </select>
 
-            <select value={formData.specialPart} onChange={e => setFormData({...formData, specialPart: e.target.value})} style={{ padding: '8px', borderRadius: '4px' }}>
+            <select value={formData.specialPart} onChange={e => setFormData({...formData, specialPart: e.target.value})} className="checker-form-input">
               <option>Whole body</option><option>Breast</option><option>Face</option><option>Stomach</option><option>Below stomach</option><option>Back</option>
             </select>
 
-            <select value={formData.ageRange} onChange={e => setFormData({...formData, ageRange: e.target.value})} style={{ padding: '8px', borderRadius: '4px' }}>
+            <select value={formData.ageRange} onChange={e => setFormData({...formData, ageRange: e.target.value})} className="checker-form-input">
               <option>18 to 28</option><option>29 to 35</option><option>36+</option>
             </select>
 
-            <select value={formData.playable} onChange={e => setFormData({...formData, playable: e.target.value})} style={{ padding: '8px', borderRadius: '4px' }}>
+            <select value={formData.playable} onChange={e => setFormData({...formData, playable: e.target.value})} className="checker-form-input">
               <option>Yes</option><option>No</option>
             </select>
 
-            <input type="number" placeholder="Total Followers" value={formData.totalFollowers} onChange={e => setFormData({...formData, totalFollowers: e.target.value})} style={{ padding: '8px', borderRadius: '4px', border: '1px solid var(--glass-border)' }} />
-
+            <input type="number" placeholder="Total Followers" value={formData.totalFollowers} onChange={e => setFormData({...formData, totalFollowers: e.target.value})} className="checker-form-input" />
           </div>
 
           <button 
             onClick={handleAdd}
-            style={{ marginTop: '15px', padding: '10px 20px', width: '100%', background: 'var(--status-yes)', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}
+            className="checker-add-btn"
           >
-            + Add to Database
+            <svg className="svg-icon add-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            Add to Database
           </button>
         </div>
       )}

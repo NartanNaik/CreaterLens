@@ -29,7 +29,7 @@ export default function MassUploadModal({ isOpen, onClose, onUploadComplete }) {
         onUploadComplete(data.newProfiles);
       }
       
-      setText(''); // Clear the box on success
+      setText('');
     } catch (error) {
       console.error("Mass upload failed:", error);
       setResult("Upload failed. Check the console.");
@@ -40,9 +40,9 @@ export default function MassUploadModal({ isOpen, onClose, onUploadComplete }) {
 
   return (
     <div className="modal-overlay">
-      <div className="glass-panel modal-content" style={{ width: '500px' }}>
+      <div className="glass-panel modal-content mass-upload-modal">
         <h2>Mass Upload Profiles</h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginBottom: '10px' }}>
+        <p className="mass-upload-subtitle">
           Paste a list of usernames separated by a new line. Duplicates will be automatically ignored.
         </p>
         
@@ -51,26 +51,26 @@ export default function MassUploadModal({ isOpen, onClose, onUploadComplete }) {
           onChange={(e) => setText(e.target.value)}
           placeholder="user1&#10;user2&#10;user3"
           rows="10"
-          style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid var(--glass-border)', background: 'var(--bg-color)', color: 'var(--text-main)', resize: 'vertical' }}
+          className="mass-upload-textarea"
         />
 
         {result && (
-          <div style={{ marginTop: '10px', padding: '10px', background: 'var(--glass-bg)', borderRadius: '5px', color: 'var(--primary-color)', fontWeight: 'bold' }}>
+          <div className="mass-upload-result">
             {result}
           </div>
         )}
 
-        <div className="modal-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
+        <div className="modal-actions mass-upload-actions">
           <button 
             onClick={onClose}
-            style={{ padding: '8px 16px', background: 'transparent', border: '1px solid var(--primary-color)', color: 'var(--primary-color)', borderRadius: '5px', cursor: 'pointer' }}
+            className="modal-close-btn"
           >
             Close
           </button>
           <button 
             onClick={handleUpload}
             disabled={loading || !text.trim()}
-            style={{ padding: '8px 16px', background: 'var(--primary-color)', color: 'white', border: 'none', borderRadius: '5px', cursor: loading ? 'not-allowed' : 'pointer' }}
+            className="modal-process-btn"
           >
             {loading ? 'Uploading...' : 'Process Upload'}
           </button>

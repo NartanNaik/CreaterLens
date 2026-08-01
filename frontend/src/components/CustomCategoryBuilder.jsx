@@ -4,7 +4,6 @@ export default function CustomCategoryBuilder({ isOpen, onClose, onSave }) {
   const [name, setName] = useState('');
   const [inputType, setInputType] = useState('text');
   
-  // State for handling dropdown options
   const [options, setOptions] = useState([]);
   const [newOption, setNewOption] = useState('');
 
@@ -28,14 +27,12 @@ export default function CustomCategoryBuilder({ isOpen, onClose, onSave }) {
       return;
     }
     
-    // Pass the data back to the dashboard to send to the backend
     onSave({
       name: name.trim(),
       inputType,
       options: inputType === 'dropdown' ? options : []
     });
     
-    // Reset form and close
     setName('');
     setInputType('text');
     setOptions([]);
@@ -45,62 +42,64 @@ export default function CustomCategoryBuilder({ isOpen, onClose, onSave }) {
 
   return (
     <div className="modal-overlay">
-      <div className="glass-panel modal-content" style={{ width: '400px' }}>
+      <div className="glass-panel modal-content custom-category-modal">
         <h2>Add Custom Category</h2>
         
-        <div style={{ marginTop: '15px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
+        <div className="custom-category-form">
           <div>
-            <label style={{ display: 'block', marginBottom: '5px' }}>Category Name:</label>
+            <label className="custom-category-label">Category Name:</label>
             <input 
               type="text" 
               value={name} 
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Eye Color"
-              style={{ width: '100%', padding: '8px', borderRadius: '5px', border: '1px solid var(--glass-border)' }}
+              className="custom-category-input"
             />
           </div>
 
           <div>
-            <label style={{ display: 'block', marginBottom: '5px' }}>Input Type:</label>
+            <label className="custom-category-label">Input Type:</label>
             <select 
               value={inputType} 
               onChange={(e) => setInputType(e.target.value)}
-              style={{ width: '100%', padding: '8px', borderRadius: '5px', border: '1px solid var(--glass-border)' }}
+              className="custom-category-input"
             >
               <option value="text">Free Text</option>
               <option value="dropdown">Dropdown Options</option>
             </select>
           </div>
 
-          {/* Only show the options builder if they select 'dropdown' */}
           {inputType === 'dropdown' && (
-            <div style={{ background: 'var(--glass-bg)', padding: '10px', borderRadius: '5px' }}>
-              <label style={{ display: 'block', marginBottom: '5px' }}>Dropdown Options:</label>
-              <div style={{ display: 'flex', gap: '5px', marginBottom: '10px' }}>
+            <div className="custom-category-dropdown-builder">
+              <label className="custom-category-label">Dropdown Options:</label>
+              <div className="custom-category-add-wrapper">
                 <input 
                   type="text" 
                   value={newOption} 
                   onChange={(e) => setNewOption(e.target.value)}
                   placeholder="e.g. Blue"
-                  style={{ flex: 1, padding: '5px', borderRadius: '5px', border: '1px solid var(--glass-border)' }}
+                  className="custom-category-add-input"
                 />
                 <button 
                   onClick={handleAddOption}
-                  style={{ padding: '5px 10px', background: 'var(--primary-color)', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}
+                  className="custom-category-add-btn"
                 >
                   Add
                 </button>
               </div>
               
-              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+              <ul className="custom-category-options-list">
                 {options.map((opt, idx) => (
-                  <li key={idx} style={{ background: 'var(--secondary-color)', padding: '4px 8px', borderRadius: '15px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <li key={idx} className="custom-category-option-item">
                     {opt}
                     <span 
-                      style={{ cursor: 'pointer', color: 'var(--status-no)', fontWeight: 'bold' }} 
+                      className="custom-category-remove-btn"
                       onClick={() => handleRemoveOption(opt)}
                     >
-                      ×
+                      <svg className="svg-icon remove-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                      </svg>
                     </span>
                   </li>
                 ))}
@@ -109,16 +108,16 @@ export default function CustomCategoryBuilder({ isOpen, onClose, onSave }) {
           )}
         </div>
 
-        <div className="modal-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
+        <div className="modal-actions custom-category-actions">
           <button 
             onClick={onClose}
-            style={{ padding: '8px 16px', background: 'transparent', border: '1px solid var(--primary-color)', color: 'var(--primary-color)', borderRadius: '5px' }}
+            className="custom-category-cancel-btn"
           >
             Cancel
           </button>
           <button 
             onClick={handleSave}
-            style={{ padding: '8px 16px', background: 'var(--primary-color)', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}
+            className="custom-category-save-btn"
           >
             Create Category
           </button>

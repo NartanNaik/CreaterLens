@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import "./ColumnSelector.css";
 
 const DEFAULT_COLUMNS = {
   username: true,
@@ -19,8 +18,7 @@ function ColumnSelector({
   onClose,
   onSave
 }) {
-  const [selectedColumns, setSelectedColumns] =
-    useState(DEFAULT_COLUMNS);
+  const [selectedColumns, setSelectedColumns] = useState(DEFAULT_COLUMNS);
 
   useEffect(() => {
     setSelectedColumns({
@@ -66,64 +64,36 @@ function ColumnSelector({
   };
 
   return (
-    <div className="column-overlay">
-      <div className="column-modal">
-
-        <h2>
-          Visible Columns
-        </h2>
+    <div className="modal-overlay">
+      <div className="glass-panel modal-content column-modal">
+        <h2>Visible Columns</h2>
 
         <div className="column-list">
-
-          {Object.entries(selectedColumns).map(
-            ([key, value]) => (
-              <label
-                key={key}
-                className="column-item"
-              >
-                <input
-                  type="checkbox"
-                  checked={value}
-                  onChange={() =>
-                    toggleColumn(key)
-                  }
-                />
-
-                <span>
-                  {key
-                    .replace(
-                      /([A-Z])/g,
-                      " $1"
-                    )
-                    .replace(
-                      /^./,
-                      (c) =>
-                        c.toUpperCase()
-                    )}
-                </span>
-              </label>
-            )
-          )}
-
+          {Object.entries(selectedColumns).map(([key, value]) => (
+            <label key={key} className="column-item">
+              <input
+                type="checkbox"
+                checked={value}
+                onChange={() => toggleColumn(key)}
+                className="column-checkbox"
+              />
+              <span>
+                {key
+                  .replace(/([A-Z])/g, " $1")
+                  .replace(/^./, (c) => c.toUpperCase())}
+              </span>
+            </label>
+          ))}
         </div>
 
-        <div className="column-buttons">
-
-          <button
-            onClick={handleSave}
-          >
-            Save
-          </button>
-
-          <button
-            className="secondary-btn"
-            onClick={handleCancel}
-          >
+        <div className="modal-actions column-buttons">
+          <button className="column-cancel-btn" onClick={handleCancel}>
             Cancel
           </button>
-
+          <button className="column-save-btn" onClick={handleSave}>
+            Save
+          </button>
         </div>
-
       </div>
     </div>
   );

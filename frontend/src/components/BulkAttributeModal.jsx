@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import "./BulkAttributeModal.css";
 
 function BulkAttributeModal({
   open,
@@ -26,9 +25,7 @@ function BulkAttributeModal({
       .filter((item) => item.length > 0);
 
     onApply(list);
-
     setValues("");
-
     onClose();
   };
 
@@ -36,56 +33,37 @@ function BulkAttributeModal({
     switch (attribute) {
       case "nation":
         return "India\nJapan\nGermany";
-
       case "interestRate":
         return "25.4\n42.8\n71.2";
-
       case "status":
         return "Available\nReserved\nUsing";
-
       case "notes":
         return "High priority\nVerified account\nNeeds review";
-
       default:
         return `Paste ${attribute} values...`;
     }
   };
 
   return (
-    <div className="bulk-overlay">
-      <div className="bulk-modal">
-
-        <h2>
-          Bulk Upload {attribute}
-        </h2>
+    <div className="modal-overlay">
+      <div className="glass-panel modal-content bulk-modal">
+        <h2>Bulk Upload {attribute}</h2>
 
         <p className="bulk-description">
-          Paste one value per line.
-          The first value will be assigned
-          to the first username, the second
-          value to the second username,
-          and so on.
+          Paste one value per line. The first value will be assigned to the first username, the second value to the second username, and so on.
         </p>
 
         <textarea
           rows={14}
           value={values}
-          onChange={(e) =>
-            setValues(e.target.value)
-          }
+          onChange={(e) => setValues(e.target.value)}
           placeholder={getPlaceholder()}
+          className="bulk-textarea"
         />
 
-        <div className="bulk-buttons">
-
+        <div className="modal-actions bulk-buttons">
           <button
-            onClick={handleApply}
-          >
-            Apply
-          </button>
-
-          <button
-            className="secondary-btn"
+            className="bulk-cancel-btn"
             onClick={() => {
               setValues("");
               onClose();
@@ -93,9 +71,13 @@ function BulkAttributeModal({
           >
             Cancel
           </button>
-
+          <button
+            className="bulk-apply-btn"
+            onClick={handleApply}
+          >
+            Apply
+          </button>
         </div>
-
       </div>
     </div>
   );

@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import './ProfileDashboard.css'; 
 import AverageViewsModal from './AverageViewsModal';
 import CustomCategoryBuilder from './CustomCategoryBuilder';
 import ProfileChecker from './ProfileChecker';
@@ -12,7 +11,6 @@ export default function ProfileDashboard() {
   const [profiles, setProfiles] = useState([]);
   const [customColumns, setCustomColumns] = useState([]);
   
-  // State for our upcoming modals
   const [isAvgCalcOpen, setIsAvgCalcOpen] = useState(false);
   const [isAddCategoryOpen, setIsAddCategoryOpen] = useState(false);
   const [selectedProfileId, setSelectedProfileId] = useState(null);
@@ -25,13 +23,11 @@ export default function ProfileDashboard() {
   const [sortConfig, setSortConfig] = useState({ key: 'createdAt', direction: 'desc' });
 
   useEffect(() => {
-    // Fetch profiles and custom columns when the dashboard loads
     fetchData();
   }, []);
 
   const fetchData = async () => {
     try {
-      // These hit the new backend endpoints we just built
       const [profilesRes, columnsRes] = await Promise.all([
         fetch('/api/profiles', { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } }),
         fetch('/api/settings/columns', { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } })
@@ -48,10 +44,8 @@ export default function ProfileDashboard() {
   };
 
   const handleSaveAverage = async (id, newAverage) => {
-    // 1. Optimistic UI update (updates screen instantly)
     setProfiles(profiles.map(p => p.id === id ? { ...p, avgViewsPerWeek: newAverage } : p));
     
-    // 2. Send to backend (Assuming you'll create a PATCH route later)
     try {
       await fetch(`/api/profiles/${id}`, {
         method: 'PATCH',
@@ -80,7 +74,6 @@ export default function ProfileDashboard() {
       const result = await response.json();
       
       if (response.ok) {
-        // Update the table headers instantly
         setCustomColumns([...customColumns, result.column]);
       } else {
         console.error("Failed to add category:", result.error);
@@ -91,7 +84,6 @@ export default function ProfileDashboard() {
   };
 
   const handleProfileAdded = (newProfile) => {
-    // Adds the new profile to the top of the existing list in the UI
     setProfiles([newProfile, ...profiles]);
   };
 
@@ -103,11 +95,10 @@ export default function ProfileDashboard() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify(columnToDelete) // We send the exact column object to the backend to remove it
+        body: JSON.stringify(columnToDelete)
       });
 
       if (response.ok) {
-        // Remove it from the UI instantly
         setCustomColumns(customColumns.filter(col => col.columnId !== columnToDelete.columnId));
       } else {
         console.error("Failed to delete category");
@@ -117,12 +108,10 @@ export default function ProfileDashboard() {
     }
   };
 
-  // Handles permanently deleting a row
   const handleDeleteRow = async (id) => {
     const confirmDelete = window.confirm("Are you sure you want to delete this profile? This action cannot be undone.");
     if (!confirmDelete) return;
 
-    // Optimistic UI update
     setProfiles(profiles.filter(p => p.id !== id));
 
     try {
@@ -134,11 +123,9 @@ export default function ProfileDashboard() {
       });
     } catch (error) {
       console.error("Failed to delete profile:", error);
-      // If it fails, you might want to fetch data again to restore the row
     }
   };
 
-  // Handles copying the row data to the clipboard
   const handleCopyRow = (profile) => {
     const textToCopy = `Username: ${profile.username} | Nation: ${profile.nation} | Followers: ${profile.totalFollowers} | Avg Views: ${profile.avgViewsPerWeek}`;
     
@@ -156,18 +143,17 @@ export default function ProfileDashboard() {
   };
 
   const filteredAndSortedProfiles = React.useMemo(() => {
-    // 1. Filter by search query (checks username and nation)
-    let processed = profiles.filter(p => 
-      p.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.nation.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    let processed = profiles.filter(p => {
+      const username = (p.username || '').toLowerCase();
+      const nation = (p.nation || '').toLowerCase();
+      const query = searchQuery.toLowerCase();
+      return username.includes(query) || nation.includes(query);
+    });
 
-    // 2. Sort the data
     processed.sort((a, b) => {
       let aValue = a[sortConfig.key];
       let bValue = b[sortConfig.key];
 
-      // Handle custom categories sorting
       if (customColumns.some(col => col.columnId === sortConfig.key)) {
         aValue = a.customCategories?.[sortConfig.key] || '';
         bValue = b.customCategories?.[sortConfig.key] || '';
@@ -182,7 +168,6 @@ export default function ProfileDashboard() {
   }, [profiles, searchQuery, sortConfig, customColumns]);
 
   const handleCellEdit = async (profileId, field, newValue, isCustom = false) => {
-    // 1. Optimistic UI update
     setProfiles(profiles.map(p => {
       if (p.id !== profileId) return p;
       if (isCustom) {
@@ -191,12 +176,13 @@ export default function ProfileDashboard() {
       return { ...p, [field]: newValue };
     }));
 
-    // 2. Prepare the payload
+    const targetProfile = profiles.find(p => p.id === profileId);
+    const existingCategories = targetProfile ? targetProfile.customCategories || {} : {};
+
     const payload = isCustom 
-      ? { customCategories: { ...profiles.find(p => p.id === profileId).customCategories, [field]: newValue } }
+      ? { customCategories: { ...existingCategories, [field]: newValue } }
       : { [field]: newValue };
 
-    // 3. Send to backend using the PATCH route we built earlier
     try {
       await fetch(`/api/profiles/${profileId}`, {
         method: 'PATCH',
@@ -212,14 +198,11 @@ export default function ProfileDashboard() {
   };
 
   const handleDragFillComplete = async (startIdx, endIdx, columnKey, newValue) => {
-    // 1. Get the affected profiles based on their visual row index
     const affectedProfiles = profiles.slice(startIdx, endIdx + 1);
     
-    // 2. Optimistic UI Update
     setProfiles(prevProfiles => {
       const newProfiles = [...prevProfiles];
       for (let i = startIdx; i <= endIdx; i++) {
-        // Check if it's a custom category or a standard field
         const isCustom = customColumns.some(col => col.columnId === columnKey);
         if (isCustom) {
           newProfiles[i] = { 
@@ -233,7 +216,6 @@ export default function ProfileDashboard() {
       return newProfiles;
     });
 
-    // 3. Send bulk update to the backend (firing individual patches asynchronously)
     const updatePromises = affectedProfiles.map(profile => {
       const isCustom = customColumns.some(col => col.columnId === columnKey);
       const payload = isCustom 
@@ -257,27 +239,28 @@ export default function ProfileDashboard() {
     }
   };
 
-  // Initialize the hook
   const dragFill = useDragFill(handleDragFillComplete);
 
   return (
     <div className="dashboard-container" onMouseUp={dragFill.handleGlobalMouseUp}>
-      {/* Insert the Checker UI Here */}
       <ProfileChecker 
         onProfileAdded={handleProfileAdded} 
         customColumns={customColumns} 
       />
 
-      {/* Search Bar */}
-      <div style={{ marginBottom: '15px', display: 'flex', justifyContent: 'flex-end' }}>
-        <input 
-          type="text" 
-          placeholder="🔍 Search by username or nation..." 
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          style={{ width: '300px', padding: '10px', borderRadius: '20px', border: '1px solid var(--primary-color)', background: 'var(--glass-bg)', color: 'var(--text-main)' }}
-        />
-      </div>
+      <div className="search-bar-container">
+  <svg className="svg-icon search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="11" cy="11" r="8"></circle>
+    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+  </svg>
+  <input 
+    type="text" 
+    placeholder="Search by username or nation..." 
+    value={searchQuery}
+    onChange={(e) => setSearchQuery(e.target.value)}
+    className="search-input"
+  />
+</div>
       <div className="glass-panel table-wrapper">
         <table className="profile-table">
           <thead>
@@ -290,43 +273,41 @@ export default function ProfileDashboard() {
               <th>Special Part</th>
               <th>Age</th>
               <th>Playable</th>
-             <th onClick={() => handleSort('totalFollowers')} style={{ cursor: 'pointer' }}>
+              <th onClick={() => handleSort('totalFollowers')} className="sortable-header">
                 Total Followers {sortConfig.key === 'totalFollowers' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
               </th>
-              <th onClick={() => handleSort('avgViewsPerWeek')} style={{ cursor: 'pointer' }}>
+              <th onClick={() => handleSort('avgViewsPerWeek')} className="sortable-header">
                 Avg Views/Week {sortConfig.key === 'avgViewsPerWeek' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
               </th>
               
-              {/* Render dynamic custom columns here */}
               {customColumns.map(col => (
                 <th key={col.columnId}>
                   {col.displayName}
                   <button 
-                    className="edit-col-btn"
-                    onClick={() => {
-                      setSelectedColumn(col);
-                      setIsManageColOpen(true);
-                    }}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', marginLeft: '5px' }}
-                  >
-                    ⚙️
-                  </button>
+  className="edit-col-btn"
+  onClick={() => {
+    setSelectedColumn(col);
+    setIsManageColOpen(true);
+  }}
+>
+  <svg className="svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: '14px', height: '14px' }}>
+    <circle cx="12" cy="12" r="3"></circle>
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+  </svg>
+</button>
                 </th>
               ))}
               
-              {/* The + Add Category Button */}
               <th>
                 <button 
-                  className="add-category-btn"
+                  className="add-category-btn margin-right-btn"
                   onClick={() => setIsAddCategoryOpen(true)}
-                  style={{ marginRight: '5px' }}
                 >
                   + Add Category
                 </button>
                 <button 
-                  className="add-category-btn"
+                  className="add-category-btn mass-upload-btn"
                   onClick={() => setIsMassUploadOpen(true)}
-                  style={{ background: 'var(--secondary-color)', color: 'var(--text-main)' }}
                 >
                   Mass Upload
                 </button>
@@ -340,14 +321,18 @@ export default function ProfileDashboard() {
               <tr key={profile.id}>
                 <td>{profile.username}</td>
                 
-                <td>
+                <td 
+                  onMouseDown={() => dragFill.handleMouseDown(index, 'nation', profile.nation)}
+                  onMouseEnter={() => dragFill.handleMouseEnter(index, 'nation')}
+                  onMouseUp={() => dragFill.handleMouseUp(index, 'nation')}
+                >
                   <EditableCell 
                     value={profile.nation} 
                     onSave={(val) => handleCellEdit(profile.id, 'nation', val)} 
                   />
                 </td>
                 
-              <td 
+                <td 
                   onMouseDown={() => dragFill.handleMouseDown(index, 'skinTone', profile.skinTone)}
                   onMouseEnter={() => dragFill.handleMouseEnter(index, 'skinTone')}
                   onMouseUp={() => dragFill.handleMouseUp(index, 'skinTone')}
@@ -360,7 +345,11 @@ export default function ProfileDashboard() {
                   />
                 </td>
                 
-                <td>
+                <td 
+                  onMouseDown={() => dragFill.handleMouseDown(index, 'bodyType', profile.bodyType)}
+                  onMouseEnter={() => dragFill.handleMouseEnter(index, 'bodyType')}
+                  onMouseUp={() => dragFill.handleMouseUp(index, 'bodyType')}
+                >
                   <EditableCell 
                     type="select" 
                     value={profile.bodyType} 
@@ -369,7 +358,11 @@ export default function ProfileDashboard() {
                   />
                 </td>
                 
-                <td>
+                <td 
+                  onMouseDown={() => dragFill.handleMouseDown(index, 'reelType', profile.reelType)}
+                  onMouseEnter={() => dragFill.handleMouseEnter(index, 'reelType')}
+                  onMouseUp={() => dragFill.handleMouseUp(index, 'reelType')}
+                >
                   <EditableCell 
                     type="select" 
                     value={profile.reelType} 
@@ -378,7 +371,11 @@ export default function ProfileDashboard() {
                   />
                 </td>
                 
-                <td>
+                <td 
+                  onMouseDown={() => dragFill.handleMouseDown(index, 'specialPart', profile.specialPart)}
+                  onMouseEnter={() => dragFill.handleMouseEnter(index, 'specialPart')}
+                  onMouseUp={() => dragFill.handleMouseUp(index, 'specialPart')}
+                >
                   <EditableCell 
                     type="select" 
                     value={profile.specialPart} 
@@ -387,7 +384,11 @@ export default function ProfileDashboard() {
                   />
                 </td>
                 
-                <td>
+                <td 
+                  onMouseDown={() => dragFill.handleMouseDown(index, 'ageRange', profile.ageRange)}
+                  onMouseEnter={() => dragFill.handleMouseEnter(index, 'ageRange')}
+                  onMouseUp={() => dragFill.handleMouseUp(index, 'ageRange')}
+                >
                   <EditableCell 
                     type="select" 
                     value={profile.ageRange} 
@@ -396,13 +397,17 @@ export default function ProfileDashboard() {
                   />
                 </td>
 
-                <td onClick={() => handleCellEdit(profile.id, 'playable', !profile.playable)} style={{cursor: 'pointer'}}>
+                <td onClick={() => handleCellEdit(profile.id, 'playable', !profile.playable)} className="clickable-status-cell">
                   <span className={`status-badge ${profile.playable ? 'playable-yes' : 'playable-no'}`}>
                     {profile.playable ? 'Yes' : 'No'}
                   </span>
                 </td>
                 
-                <td>
+                <td 
+                  onMouseDown={() => dragFill.handleMouseDown(index, 'totalFollowers', profile.totalFollowers)}
+                  onMouseEnter={() => dragFill.handleMouseEnter(index, 'totalFollowers')}
+                  onMouseUp={() => dragFill.handleMouseUp(index, 'totalFollowers')}
+                >
                   <EditableCell 
                     type="number" 
                     value={profile.totalFollowers} 
@@ -410,7 +415,6 @@ export default function ProfileDashboard() {
                   />
                 </td>
                 
-                {/* Clicking this cell will open the 7-Reel Calculator */}
                 <td 
                   className="clickable-cell" 
                   onClick={() => {
@@ -421,9 +425,13 @@ export default function ProfileDashboard() {
                   {profile.avgViewsPerWeek > 0 ? profile.avgViewsPerWeek.toLocaleString() : 'Calculate ➔'}
                 </td>
 
-               {/* Map dynamic column values */}
                 {customColumns.map(col => (
-                  <td key={col.columnId}>
+                  <td 
+                    key={col.columnId}
+                    onMouseDown={() => dragFill.handleMouseDown(index, col.columnId, profile.customCategories?.[col.columnId] || '')}
+                    onMouseEnter={() => dragFill.handleMouseEnter(index, col.columnId)}
+                    onMouseUp={() => dragFill.handleMouseUp(index, col.columnId)}
+                  >
                     <EditableCell 
                       type={col.inputType === 'dropdown' ? 'select' : 'text'}
                       options={col.options || []}
@@ -433,19 +441,17 @@ export default function ProfileDashboard() {
                   </td>
                 ))}
                 
-                <td>{/* Empty cell for the add category column alignment */}</td>
+                <td></td>
                 <td>
                   <button 
-                    className="action-btn" 
+                    className="action-btn copy-btn" 
                     onClick={() => handleCopyRow(profile)}
-                    style={{ background: 'var(--secondary-color)', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', marginRight: '5px', color: 'var(--text-main)' }}
                   >
                     Copy
                   </button>
                   <button 
-                    className="action-btn" 
+                    className="action-btn delete-btn" 
                     onClick={() => handleDeleteRow(profile.id)}
-                    style={{ background: 'var(--status-no)', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer' }}
                   >
                     Delete
                   </button>
@@ -456,7 +462,6 @@ export default function ProfileDashboard() {
         </table>
       </div>
 
-      {/* Insert Modals Here */}
       <AverageViewsModal 
         isOpen={isAvgCalcOpen} 
         onClose={() => setIsAvgCalcOpen(false)}

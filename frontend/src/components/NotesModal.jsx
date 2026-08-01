@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import "./NotesModal.css";
 
 function NotesModal({
   open,
@@ -14,29 +13,21 @@ function NotesModal({
     if (open) {
       setValue(notes || "");
     }
-  }, [
-    open,
-    notes
-  ]);
+  }, [open, notes]);
 
   if (!open) {
     return null;
   }
 
   const handleSave = () => {
-    onSave(
-      value.trim()
-    );
+    onSave(value.trim());
   };
 
   return (
-    <div className="notes-overlay">
-      <div className="notes-modal">
-
-        <h2>
-          Notes
-        </h2>
-
+    <div className="modal-overlay">
+      <div className="glass-panel modal-content notes-modal">
+        <h2>Notes</h2>
+        
         <p className="notes-username">
           {username}
         </p>
@@ -44,24 +35,14 @@ function NotesModal({
         <textarea
           rows={10}
           value={value}
-          onChange={(e) =>
-            setValue(
-              e.target.value
-            )
-          }
+          onChange={(e) => setValue(e.target.value)}
           placeholder="Write notes..."
+          className="notes-textarea"
         />
 
-        <div className="notes-buttons">
-
+        <div className="modal-actions notes-buttons">
           <button
-            onClick={handleSave}
-          >
-            Save
-          </button>
-
-          <button
-            className="secondary-btn"
+            className="notes-cancel-btn"
             onClick={() => {
               setValue(notes || "");
               onClose();
@@ -69,9 +50,13 @@ function NotesModal({
           >
             Cancel
           </button>
-
+          <button
+            className="notes-save-btn"
+            onClick={handleSave}
+          >
+            Save
+          </button>
         </div>
-
       </div>
     </div>
   );

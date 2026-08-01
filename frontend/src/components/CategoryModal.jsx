@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import "./CategoryModal.css";
 
 function CategoryModal({
   open,
@@ -34,23 +33,24 @@ function CategoryModal({
   };
 
   return (
-    <div className="cat-overlay" onClick={onClose}>
-      <div className="cat-modal" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="glass-panel modal-content cat-modal" onClick={(e) => e.stopPropagation()}>
         <h2>Create Category</h2>
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} className="cat-form">
           <input
             type="text"
             autoFocus
             placeholder="Enter Category Name"
             value={value}
             onChange={(e) => setValue(e.target.value)}
+            className="cat-input"
           />
-          <div className="cat-buttons">
-            <button type="submit" disabled={!value.trim()}>
-              Create
-            </button>
-            <button type="button" className="secondary-btn" onClick={onClose}>
+          <div className="modal-actions cat-buttons">
+            <button type="button" className="cat-cancel-btn" onClick={onClose}>
               Cancel
+            </button>
+            <button type="submit" className="cat-create-btn" disabled={!value.trim()}>
+              Create
             </button>
           </div>
         </form>

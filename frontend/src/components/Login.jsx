@@ -45,7 +45,7 @@ function Login() {
 
   return (
     <div className="login-page">
-      <div className="login-card">
+      <div className="glass-panel login-card">
         <div className="login-header">
           <div className="login-logo">UC</div>
           <h1>Username Checker</h1>
