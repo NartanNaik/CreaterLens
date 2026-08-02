@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import api from '../services/api'; // adjust path to match your project structure
+import api from '../services/api'; 
 
 export default function ProfileChecker({ onProfileAdded, customColumns }) {
   const [username, setUsername] = useState('');
@@ -7,13 +7,13 @@ export default function ProfileChecker({ onProfileAdded, customColumns }) {
   const [loading, setLoading] = useState(false);
 
   const [formData, setFormData] = useState({
-    region: '',
-    themeColor: 'Light',
-    accountType: 'Personal',
-    contentVibe: 'Funny',
-    primaryFocus: 'Gaming',
-    activityLevel: 'Daily',
-    isVerified: 'Yes',
+    nation: '',
+    skinTone: 'Fair',
+    bodyType: 'Fit',
+    reelType: 'Hot',
+    specialPart: 'Whole body',
+    ageRange: '18 to 28',
+    playable: 'Yes',
     totalFollowers: '',
     customCategories: {}
   });
@@ -37,7 +37,7 @@ export default function ProfileChecker({ onProfileAdded, customColumns }) {
       const payload = {
         ...formData,
         username,
-        isVerified: formData.isVerified === 'Yes',
+        playable: formData.playable === 'Yes',
         avgViewsPerWeek: 0
       };
 
@@ -48,8 +48,8 @@ export default function ProfileChecker({ onProfileAdded, customColumns }) {
       setUsername('');
       setStatus(null);
       setFormData({
-        region: '', themeColor: 'Light', accountType: 'Personal', contentVibe: 'Funny',
-        primaryFocus: 'Gaming', activityLevel: 'Daily', isVerified: 'Yes',
+        nation: '', skinTone: 'Fair', bodyType: 'Fit', reelType: 'Hot',
+        specialPart: 'Whole body', ageRange: '18 to 28', playable: 'Yes',
         totalFollowers: '', customCategories: {}
       });
     } catch (error) {
