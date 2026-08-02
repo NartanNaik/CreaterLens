@@ -36,9 +36,6 @@ const corsOptions = {
 // 2. Apply it to standard requests
 app.use(cors(corsOptions));
 
-// 3. Apply it specifically to preflight requests (THE VERCEL FIX!)
-app.options('/(.*)', cors(corsOptions));
-
 app.use(express.json());
 
 app.get("/", (req, res) => {
