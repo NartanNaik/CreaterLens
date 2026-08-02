@@ -41,7 +41,7 @@ app.use(express.json());
 app.get("/", (req, res) => {
   res.status(200).json({
     success: true,
-    message: "Username Checker API is running."
+    message: "Pink Data API is running."
   });
 });
 

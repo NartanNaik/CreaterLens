@@ -48,7 +48,7 @@ function Login() {
       <div className="glass-panel login-card">
         <div className="login-header">
           <div className="login-logo">UC</div>
-          <h1>Username Checker</h1>
+          <h1>Pink Data</h1>
           <p>Sign in to manage your usernames</p>
         </div>
         <form onSubmit={handleLogin} className="login-form">

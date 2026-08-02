@@ -1,7 +1,7 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "description": "Username Checker Backend",
+  "description": "Pink Data Backend",
   "type": "module",
   "main": "src/server.js",
   "scripts": {
