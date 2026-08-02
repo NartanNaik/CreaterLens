@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import api from '../services/api'; // adjust path to match your project structure
 
 export default function ProfileChecker({ onProfileAdded, customColumns }) {
   const [username, setUsername] = useState('');
@@ -6,13 +7,13 @@ export default function ProfileChecker({ onProfileAdded, customColumns }) {
   const [loading, setLoading] = useState(false);
 
   const [formData, setFormData] = useState({
-    nation: '',
-    skinTone: 'Fair',
-    bodyType: 'Fit',
-    reelType: 'Hot',
-    specialPart: 'Whole body',
-    ageRange: '18 to 28',
-    playable: 'Yes',
+    region: '',
+    themeColor: 'Light',
+    accountType: 'Personal',
+    contentVibe: 'Funny',
+    primaryFocus: 'Gaming',
+    activityLevel: 'Daily',
+    isVerified: 'Yes',
     totalFollowers: '',
     customCategories: {}
   });
@@ -20,17 +21,9 @@ export default function ProfileChecker({ onProfileAdded, customColumns }) {
   const handleCheck = async () => {
     if (!username.trim()) return;
     setLoading(true);
-    
+
     try {
-      const res = await fetch('/api/profiles/check', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({ username })
-      });
-      const data = await res.json();
+      const { data } = await api.post('/profiles/check', { username });
       setStatus(data.exists ? 'exists' : 'available');
     } catch (error) {
       console.error("Check failed:", error);
@@ -44,31 +37,21 @@ export default function ProfileChecker({ onProfileAdded, customColumns }) {
       const payload = {
         ...formData,
         username,
-        playable: formData.playable === 'Yes',
+        isVerified: formData.isVerified === 'Yes',
         avgViewsPerWeek: 0
       };
 
-      const res = await fetch('/api/profiles/add', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify(payload)
-      });
+      const { data } = await api.post('/profiles/add', payload);
 
-      if (res.ok) {
-        const data = await res.json();
-        onProfileAdded(data.profile);
-        
-        setUsername('');
-        setStatus(null);
-        setFormData({
-          nation: '', skinTone: 'Fair', bodyType: 'Fit', reelType: 'Hot', 
-          specialPart: 'Whole body', ageRange: '18 to 28', playable: 'Yes', 
-          totalFollowers: '', customCategories: {}
-        });
-      }
+      onProfileAdded(data.profile);
+
+      setUsername('');
+      setStatus(null);
+      setFormData({
+        region: '', themeColor: 'Light', accountType: 'Personal', contentVibe: 'Funny',
+        primaryFocus: 'Gaming', activityLevel: 'Daily', isVerified: 'Yes',
+        totalFollowers: '', customCategories: {}
+      });
     } catch (error) {
       console.error("Failed to add profile:", error);
     }
@@ -96,7 +79,7 @@ export default function ProfileChecker({ onProfileAdded, customColumns }) {
         </button>
       </div>
 
-      {status === 'exists' && (
+     {status === 'exists' && (
         <p className="checker-warning-text">
           <svg className="svg-icon warning-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>

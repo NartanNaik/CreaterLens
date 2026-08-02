@@ -1,0 +1,99 @@
+import React, { useState } from 'react';
+
+export default function ProfileChecker({ onProfileAdded, customColumns }) {
+  const [username, setUsername] = useState('');
+  const [status, setStatus] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const [formData, setFormData] = useState({
+    nation: '',
+    skinTone: 'Fair',
+    bodyType: 'Fit',
+    reelType: 'Hot',
+    specialPart: 'Whole body',
+    ageRange: '18 to 28',
+    playable: 'Yes',
+    totalFollowers: '',
+    customCategories: {}
+  });
+
+  const handleCheck = async () => {
+    if (!username.trim()) return;
+    setLoading(true);
+    
+    try {
+      const res = await fetch('/api/profiles/check', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ username })
+      });
+      const data = await res.json();
+      setStatus(data.exists ? 'exists' : 'available');
+    } catch (error) {
+      console.error("Check failed:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAdd = async () => {
+    try {
+      const payload = {
+        ...formData,
+        username,
+        playable: formData.playable === 'Yes',
+        avgViewsPerWeek: 0
+      };
+
+      const res = await fetch('/api/profiles/add', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        onProfileAdded(data.profile);
+        
+        setUsername('');
+        setStatus(null);
+        setFormData({
+          nation: '', skinTone: 'Fair', bodyType: 'Fit', reelType: 'Hot', 
+          specialPart: 'Whole body', ageRange: '18 to 28', playable: 'Yes', 
+          totalFollowers: '', customCategories: {}
+        });
+      }
+    } catch (error) {
+      console.error("Failed to add profile:", error);
+    }
+  };
+
+  return (
+    <div className="glass-panel profile-checker-container">
+      <div className="checker-input-group">
+        <input 
+          type="text" 
+          placeholder="Enter username to check..." 
+          value={username} 
+          onChange={(e) => {
+            setUsername(e.target.value);
+            setStatus(null);
+          }}
+          className="checker-input"
+        />
+        <button 
+          onClick={handleCheck} 
+          disabled={loading || !username}
+          className="checker-btn"
+        >
+          {loading ? 'Checking...' : 'Check Username'}
+        </button>
+      </div>
+
+      

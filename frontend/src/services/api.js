@@ -22,35 +22,45 @@ export const login = async (id, password) => {
   return data;
 };
 
+// --- Matches routes/profileRoutes.js (mounted at /api/profiles) ---
+
 export const checkUsername = async (username) => {
-  const { data } = await api.post("/usernames/check", { username });
+  const { data } = await api.post("/profiles/check", { username });
   return data;
 };
 
 export const addUsername = async (username, category) => {
-  const { data } = await api.post("/usernames/add", { username, category });
+  const { data } = await api.post("/profiles/add", { username, category });
   return data;
 };
 
 export const getUsernames = async (category) => {
-  const { data } = await api.get("/usernames", { params: { category } });
+  const { data } = await api.get("/profiles", { params: { category } });
   return data.data;
 };
 
 export const massUploadUsernames = async (usernames, category) => {
-  const { data } = await api.post("/usernames/mass-upload", { usernames, category });
+  const { data } = await api.post("/profiles/mass-upload", { usernames, category });
   return data;
 };
 
 export const deleteUsername = async (id) => {
-  const { data } = await api.delete(`/usernames/${id}`);
+  const { data } = await api.delete(`/profiles/${id}`);
   return data;
 };
 
+// NOTE: no bulk-delete route exists in profileRoutes.js (only DELETE /:id).
+// This will still 404/405 until you add a matching DELETE '/' route with
+// deleteAllProfiles in profileRoutes.js + profileController.js.
 export const deleteAllUsernames = async (category) => {
-  const { data } = await api.delete("/usernames", { data: { category } });
+  const { data } = await api.delete("/profiles", { data: { category } });
   return data;
 };
+
+// --- The following do not match any route shown in profileRoutes.js.
+// They likely belong in attributeRoutes.js (mounted at /api/attributes).
+// Verify attributeRoutes.js defines these paths before trusting them;
+// left as /usernames/... since their real backend location wasn't shown. ---
 
 export const updateNation = async (id, nation) => {
   const { data } = await api.put(`/usernames/nation/${id}`, { nation });
