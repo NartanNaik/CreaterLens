@@ -12,9 +12,8 @@ const app = express();
 
 const allowedOrigins = [
   process.env.CLIENT_URL,
-  "https://username-checker-frontend.vercel.app",
-  "http://localhost:5173",
-  "http://localhost:3000"
+  "https://pink-data.vercel.app", 
+  "http://localhost:5173"
 ].filter(Boolean);
 
 app.use(
