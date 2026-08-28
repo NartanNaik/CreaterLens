@@ -53,6 +53,46 @@ const columns = [
     key: "delete",
     label: "Delete",
     visible: true
+  },
+  {
+    key: "skinTone",
+    label: "Skin Tone",
+    visible: true
+  },
+  {
+    key: "bodyType",
+    label: "Body Type",
+    visible: true
+  },
+  {
+    key: "reelType",
+    label: "Reel Type",
+    visible: true
+  },
+  {
+    key: "specialPart",
+    label: "Special Part",
+    visible: true
+  },
+  {
+    key: "ageRange",
+    label: "Age Range",
+    visible: true
+  },
+  {
+    key: "playable",
+    label: "Playable",
+    visible: true
+  },
+  {
+    key: "totalFollowers",
+    label: "Total Followers",
+    visible: true
+  },
+  {
+    key: "avgViewsPerWeek",
+    label: "Average Views",
+    visible: true
   }
 ];
 

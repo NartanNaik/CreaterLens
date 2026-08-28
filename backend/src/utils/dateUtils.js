@@ -1,14 +1,31 @@
-export const formatDate = (timestamp) => {
+/**
+ * Helper to safely parse Firestore timestamps, ISO strings, or milliseconds.
+ * Prevents "Invalid Date" crashes.
+ */
+const parseSafeDate = (timestamp) => {
   if (!timestamp) {
-    return "";
+    return null;
   }
 
   let date;
-
-  if (timestamp.toDate) {
+  if (timestamp.toDate && typeof timestamp.toDate === "function") {
     date = timestamp.toDate();
   } else {
     date = new Date(timestamp);
+  }
+
+  // If the parsed date is invalid (NaN), return null to safely fail
+  if (isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date;
+};
+
+export const formatDate = (timestamp) => {
+  const date = parseSafeDate(timestamp);
+  if (!date) {
+    return "";
   }
 
   return date.toLocaleDateString("en-GB", {
@@ -19,13 +36,10 @@ export const formatDate = (timestamp) => {
 };
 
 export const isToday = (timestamp) => {
-  if (!timestamp) {
+  const date = parseSafeDate(timestamp);
+  if (!date) {
     return false;
   }
-
-  const date = timestamp.toDate
-    ? timestamp.toDate()
-    : new Date(timestamp);
 
   const today = new Date();
 
@@ -37,33 +51,31 @@ export const isToday = (timestamp) => {
 };
 
 export const isThisWeek = (timestamp) => {
-  if (!timestamp) {
+  const date = parseSafeDate(timestamp);
+  if (!date) {
     return false;
   }
 
-  const date = timestamp.toDate
-    ? timestamp.toDate()
-    : new Date(timestamp);
-
   const today = new Date();
 
+  // Calculate the first day of the week (Sunday) and force time to 00:00:00.000
   const firstDay = new Date(today);
   firstDay.setDate(today.getDate() - today.getDay());
+  firstDay.setHours(0, 0, 0, 0);
 
+  // Calculate the last day of the week (Saturday) and force time to 23:59:59.999
   const lastDay = new Date(firstDay);
   lastDay.setDate(firstDay.getDate() + 6);
+  lastDay.setHours(23, 59, 59, 999);
 
   return date >= firstDay && date <= lastDay;
 };
 
 export const isThisMonth = (timestamp) => {
-  if (!timestamp) {
+  const date = parseSafeDate(timestamp);
+  if (!date) {
     return false;
   }
-
-  const date = timestamp.toDate
-    ? timestamp.toDate()
-    : new Date(timestamp);
 
   const today = new Date();
 

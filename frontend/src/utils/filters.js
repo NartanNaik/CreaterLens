@@ -16,6 +16,22 @@ const filters = [
     label: "Nation (Z → A)"
   },
   {
+    value: "followers-high",
+    label: "Highest Followers"
+  },
+  {
+    value: "followers-low",
+    label: "Lowest Followers"
+  },
+  {
+    value: "views-high",
+    label: "Highest Views"
+  },
+  {
+    value: "views-low",
+    label: "Lowest Views"
+  },
+  {
     value: "interest-high",
     label: "Highest Interest"
   },

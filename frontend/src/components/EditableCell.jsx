@@ -10,6 +10,7 @@ export default function EditableCell({ value, type = 'text', options = [], onSav
 
   const handleBlur = () => {
     setIsEditing(false);
+    // Only trigger a save if the value actually changed
     if (currentValue !== value) {
       onSave(currentValue);
     }
@@ -18,6 +19,10 @@ export default function EditableCell({ value, type = 'text', options = [], onSav
   const handleKeyDown = (e) => {
     if (e.key === 'Enter') {
       handleBlur();
+    } else if (e.key === 'Escape') {
+      // Abort edit and revert to original value
+      setCurrentValue(value);
+      setIsEditing(false);
     }
   };
 
@@ -26,13 +31,16 @@ export default function EditableCell({ value, type = 'text', options = [], onSav
       return (
         <select 
           autoFocus
-          value={currentValue}
+          value={currentValue || ''}
           onChange={(e) => setCurrentValue(e.target.value)}
           onBlur={handleBlur}
           onKeyDown={handleKeyDown}
-          className="editable-input"
+          className="editable-cell-input editable-cell-select"
         >
-          {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+          <option value="" disabled>Select...</option>
+          {options.map(opt => (
+            <option key={opt} value={opt} className="editable-select-option">{opt}</option>
+          ))}
         </select>
       );
     }
@@ -41,11 +49,11 @@ export default function EditableCell({ value, type = 'text', options = [], onSav
       <input
         autoFocus
         type={type}
-        value={currentValue}
+        value={currentValue || ''}
         onChange={(e) => setCurrentValue(e.target.value)}
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
-        className="editable-input"
+        className="editable-cell-input"
       />
     );
   }
@@ -53,10 +61,14 @@ export default function EditableCell({ value, type = 'text', options = [], onSav
   return (
     <div 
       onClick={() => setIsEditing(true)} 
-      className="editable-display"
+      className="editable-cell-display"
       title="Click to edit"
     >
-      {value || '-'}
+      {value ? (
+        <span>{value}</span>
+      ) : (
+        <span className="editable-cell-placeholder">-</span>
+      )}
     </div>
   );
 }

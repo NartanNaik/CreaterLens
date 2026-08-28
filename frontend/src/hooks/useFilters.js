@@ -21,11 +21,51 @@ function useFilters(usernames, filter) {
         );
         break;
 
-      case "nation":
+      case "nation-asc":
         data.sort((a, b) =>
           (a.nation || "").localeCompare(
             b.nation || ""
           )
+        );
+        break;
+
+      case "nation-desc":
+        data.sort((a, b) =>
+          (b.nation || "").localeCompare(
+            a.nation || ""
+          )
+        );
+        break;
+
+      case "followers-high":
+        data.sort(
+          (a, b) =>
+            (b.totalFollowers || 0) -
+            (a.totalFollowers || 0)
+        );
+        break;
+
+      case "followers-low":
+        data.sort(
+          (a, b) =>
+            (a.totalFollowers || 0) -
+            (b.totalFollowers || 0)
+        );
+        break;
+
+      case "views-high":
+        data.sort(
+          (a, b) =>
+            (b.avgViewsPerWeek || 0) -
+            (a.avgViewsPerWeek || 0)
+        );
+        break;
+
+      case "views-low":
+        data.sort(
+          (a, b) =>
+            (a.avgViewsPerWeek || 0) -
+            (b.avgViewsPerWeek || 0)
         );
         break;
 

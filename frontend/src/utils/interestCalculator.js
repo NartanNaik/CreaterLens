@@ -1,3 +1,8 @@
+/**
+ * Calculates the weighted interest rate based on engagement metrics.
+ * @param {Object} params - The engagement data.
+ * @returns {Object} The parsed metrics and the final calculated interest rate.
+ */
 export const calculateInterestRate = ({
   messages = 0,
   replies = 0,
@@ -26,6 +31,11 @@ export const calculateInterestRate = ({
   };
 };
 
+/**
+ * Returns a color code based on the interest rate value.
+ * @param {number|string} interestRate - The calculated interest rate.
+ * @returns {string} Hex color code.
+ */
 export const getInterestColor = (
   interestRate
 ) => {
@@ -51,6 +61,11 @@ export const getInterestColor = (
   return "#C5221F";
 };
 
+/**
+ * Returns a human-readable label based on the interest rate value.
+ * @param {number|string} interestRate - The calculated interest rate.
+ * @returns {string} Category label.
+ */
 export const getInterestLabel = (
   interestRate
 ) => {
@@ -76,6 +91,11 @@ export const getInterestLabel = (
   return "Very Low";
 };
 
+/**
+ * Formats the interest rate to always show two decimal places.
+ * @param {number|string} interestRate - The calculated interest rate.
+ * @returns {string} Formatted number string.
+ */
 export const formatInterestRate = (
   interestRate
 ) => {

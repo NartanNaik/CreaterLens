@@ -1,3 +1,5 @@
+import React from 'react';
+
 const statusOptions = [
   "Available",
   "Reserved",
@@ -6,12 +8,13 @@ const statusOptions = [
   "Rejected"
 ];
 
-const statusColors = {
-  Available: "available",
-  Reserved: "reserved",
-  Using: "using",
-  Sold: "sold",
-  Rejected: "rejected"
+// Mapped to specific CSS modifier classes for dark mode styling
+const statusClasses = {
+  Available: "status-badge-available",
+  Reserved: "status-badge-reserved",
+  Using: "status-badge-using",
+  Sold: "status-badge-sold",
+  Rejected: "status-badge-rejected"
 };
 
 function StatusBadge({
@@ -20,16 +23,17 @@ function StatusBadge({
   onChange
 }) {
   const currentStatus = statusOptions.includes(status) ? status : "Available";
+  const badgeClass = statusClasses[currentStatus] || statusClasses.Available;
 
   if (editable) {
     return (
       <select
-        className={`status-select ${statusColors[currentStatus]}`}
         value={currentStatus}
         onChange={(e) => onChange(e.target.value)}
+        className={`status-select-dropdown ${badgeClass}`}
       >
         {statusOptions.map((item) => (
-          <option key={item} value={item}>
+          <option key={item} value={item} className="status-select-option">
             {item}
           </option>
         ))}
@@ -38,7 +42,7 @@ function StatusBadge({
   }
 
   return (
-    <span className={`status-badge ${statusColors[currentStatus]}`}>
+    <span className={`status-badge-pill ${badgeClass}`}>
       {currentStatus}
     </span>
   );

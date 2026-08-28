@@ -1,11 +1,60 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import AverageViewsModal from './AverageViewsModal';
 import CustomCategoryBuilder from './CustomCategoryBuilder';
 import ProfileChecker from './ProfileChecker';
 import ManageCategoryModal from './ManageCategoryModal';
 import EditableCell from './EditableCell';
 import MassUploadModal from './MassUploadModal';
+import DragFillOverlay from './DragFillOverlay';
 import useDragFill from '../hooks/useDragFill';
+
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
+// --- Inline SVGs (No Emojis) ---
+const SearchIcon = () => (
+  <svg className="search-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="11" cy="11" r="8"></circle>
+    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+  </svg>
+);
+
+const PlusIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="12" y1="5" x2="12" y2="19"></line>
+    <line x1="5" y1="12" x2="19" y2="12"></line>
+  </svg>
+);
+
+const UploadCloudIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="16 16 12 12 8 16"></polyline>
+    <line x1="12" y1="12" x2="12" y2="21"></line>
+    <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"></path>
+  </svg>
+);
+
+const SettingsIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="3"></circle>
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+  </svg>
+);
+
+const CopyIcon = () => (
+  <svg className="copy-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+  </svg>
+);
+
+const TrashIcon = () => (
+  <svg className="delete-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="3 6 5 6 21 6"></polyline>
+    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+    <line x1="10" y1="11" x2="10" y2="17"></line>
+    <line x1="14" y1="11" x2="14" y2="17"></line>
+  </svg>
+);
 
 export default function ProfileDashboard() {
   const [profiles, setProfiles] = useState([]);
@@ -29,17 +78,20 @@ export default function ProfileDashboard() {
   const fetchData = async () => {
     try {
       const [profilesRes, columnsRes] = await Promise.all([
-        fetch('https://pink-backend.vercel.app/api/profiles', { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } }),
-        fetch('https://pink-backend.vercel.app/api/settings/columns', { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } })
+        fetch(`${API_BASE}/api/profiles`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } }),
+        fetch(`${API_BASE}/api/settings/columns`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } })
       ]);
       
       const profilesData = await profilesRes.json();
       const columnsData = await columnsRes.json();
       
-      setProfiles(profilesData);
-      setCustomColumns(columnsData);
+      // FIX: Force data into an array to prevent .filter() crashes on 403 responses
+      setProfiles(Array.isArray(profilesData) ? profilesData : (profilesData.data || []));
+      setCustomColumns(Array.isArray(columnsData) ? columnsData : (columnsData.data || []));
     } catch (error) {
       console.error("Error fetching data:", error);
+      setProfiles([]);
+      setCustomColumns([]);
     }
   };
 
@@ -47,7 +99,7 @@ export default function ProfileDashboard() {
     setProfiles(profiles.map(p => p.id === id ? { ...p, avgViewsPerWeek: newAverage } : p));
     
     try {
-      await fetch(`https://pink-backend.vercel.app/api/profiles/${id}`, {
+      await fetch(`${API_BASE}/api/profiles/${id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -62,7 +114,7 @@ export default function ProfileDashboard() {
 
   const handleSaveNewCategory = async (categoryData) => {
     try {
-      const response = await fetch('https://pink-backend.vercel.app/api/settings/columns', {
+      const response = await fetch(`${API_BASE}/api/settings/columns`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -89,7 +141,7 @@ export default function ProfileDashboard() {
 
   const handleDeleteCategory = async (columnToDelete) => {
     try {
-      const response = await fetch('https://pink-backend.vercel.app/api/settings/columns', {
+      const response = await fetch(`${API_BASE}/api/settings/columns`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
@@ -115,7 +167,7 @@ export default function ProfileDashboard() {
     setProfiles(profiles.filter(p => p.id !== id));
 
     try {
-      await fetch(`https://pink-backend.vercel.app/api/profiles/${id}`, {
+      await fetch(`${API_BASE}/api/profiles/${id}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -142,7 +194,7 @@ export default function ProfileDashboard() {
     setSortConfig({ key, direction });
   };
 
-  const filteredAndSortedProfiles = React.useMemo(() => {
+  const filteredAndSortedProfiles = useMemo(() => {
     let processed = profiles.filter(p => {
       const username = (p.username || '').toLowerCase();
       const nation = (p.nation || '').toLowerCase();
@@ -184,7 +236,7 @@ export default function ProfileDashboard() {
       : { [field]: newValue };
 
     try {
-      await fetch(`https://pink-backend.vercel.app/api/profiles/${profileId}`, {
+      await fetch(`${API_BASE}/api/profiles/${profileId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -222,7 +274,7 @@ export default function ProfileDashboard() {
         ? { customCategories: { ...profile.customCategories, [columnKey]: newValue } }
         : { [columnKey]: newValue };
 
-      return fetch(`https://pink-backend.vercel.app/api/profiles/${profile.id}`, {
+      return fetch(`${API_BASE}/api/profiles/${profile.id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -243,16 +295,16 @@ export default function ProfileDashboard() {
 
   return (
     <div className="dashboard-container" onMouseUp={dragFill.handleGlobalMouseUp}>
+      
+      {/* Profile Checker Component */}
       <ProfileChecker 
         onProfileAdded={handleProfileAdded} 
         customColumns={customColumns} 
       />
 
+      {/* Search Bar */}
       <div className="search-bar-container">
-        <svg className="svg-icon search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="11" cy="11" r="8"></circle>
-          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-        </svg>
+        <SearchIcon />
         <input 
           type="text" 
           placeholder="Search by username or nation..." 
@@ -262,7 +314,8 @@ export default function ProfileDashboard() {
         />
       </div>
       
-      <div className="glass-panel table-wrapper">
+      {/* Table Wrapper */}
+      <div className="table-wrapper glass-panel">
         <table className="profile-table">
           <thead>
             <tr>
@@ -283,44 +336,37 @@ export default function ProfileDashboard() {
               
               {customColumns.map(col => (
                 <th key={col.columnId}>
-                  {col.displayName}
-                  <button 
-                    className="edit-col-btn"
-                    onClick={() => {
-                      setSelectedColumn(col);
-                      setIsManageColOpen(true);
-                    }}
-                  >
-                    <svg className="svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: '14px', height: '14px' }}>
-                      <circle cx="12" cy="12" r="3"></circle>
-                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-                    </svg>
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>{col.displayName}</span>
+                    <button 
+                      className="edit-col-btn"
+                      onClick={() => {
+                        setSelectedColumn(col);
+                        setIsManageColOpen(true);
+                      }}
+                      title="Manage Column"
+                    >
+                      <SettingsIcon />
+                    </button>
+                  </div>
                 </th>
               ))}
               
-              <th>
-                <button 
-                  className="add-category-btn margin-right-btn"
-                  onClick={() => setIsAddCategoryOpen(true)}
-                >
-                  <svg className="svg-icon add-category-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="12" y1="5" x2="12" y2="19"></line>
-                    <line x1="5" y1="12" x2="19" y2="12"></line>
-                  </svg>
-                  Add Category
-                </button>
-                <button 
-                  className="add-category-btn mass-upload-btn"
-                  onClick={() => setIsMassUploadOpen(true)}
-                >
-                  <svg className="svg-icon mass-upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                    <polyline points="17 8 12 3 7 8"></polyline>
-                    <line x1="12" y1="3" x2="12" y2="15"></line>
-                  </svg>
-                  Mass Upload
-                </button>
+              <th style={{ textAlign: 'right' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
+                  <button 
+                    className="add-category-btn"
+                    onClick={() => setIsAddCategoryOpen(true)}
+                  >
+                    <PlusIcon /> Add Category
+                  </button>
+                  <button 
+                    className="add-category-btn mass-upload-btn"
+                    onClick={() => setIsMassUploadOpen(true)}
+                  >
+                    <UploadCloudIcon /> Mass Upload
+                  </button>
+                </div>
               </th>
               <th>Actions</th>
             </tr>
@@ -329,7 +375,7 @@ export default function ProfileDashboard() {
           <tbody>
             {filteredAndSortedProfiles.map((profile, index) => (
               <tr key={profile.id}>
-                <td>{profile.username}</td>
+                <td style={{ fontWeight: '600' }}>{profile.username}</td>
                 
                 <td 
                   onMouseDown={() => dragFill.handleMouseDown(index, 'nation', profile.nation)}
@@ -407,8 +453,8 @@ export default function ProfileDashboard() {
                   />
                 </td>
 
-                <td onClick={() => handleCellEdit(profile.id, 'playable', !profile.playable)} className="clickable-status-cell">
-                  <span className={`status-badge ${profile.playable ? 'playable-yes' : 'playable-no'}`}>
+                <td onClick={() => handleCellEdit(profile.id, 'playable', !profile.playable)} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                  <span className={`status-badge ${profile.playable ? 'available' : 'rejected'}`}>
                     {profile.playable ? 'Yes' : 'No'}
                   </span>
                 </td>
@@ -426,11 +472,12 @@ export default function ProfileDashboard() {
                 </td>
                 
                 <td 
-                  className="clickable-cell" 
+                  style={{ color: 'var(--text-faint)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}
                   onClick={() => {
                     setSelectedProfileId(profile.id);
                     setIsAvgCalcOpen(true);
                   }}
+                  title="Click to calculate average"
                 >
                   {profile.avgViewsPerWeek > 0 ? profile.avgViewsPerWeek.toLocaleString() : 'Calculate ➔'}
                 </td>
@@ -452,30 +499,22 @@ export default function ProfileDashboard() {
                 ))}
                 
                 <td></td>
+                
                 <td>
-                  <button 
-                    className="action-btn copy-btn" 
-                    onClick={() => handleCopyRow(profile)}
-                  >
-                    <svg className="svg-icon copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                    </svg>
-                    Copy
-                  </button>
-                  <button 
-                    className="action-btn delete-btn" 
-                    onClick={() => handleDeleteRow(profile.id)}
-                  >
-                    <svg className="svg-icon delete-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="3 6 5 6 21 6"></polyline>
-                      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
-                      <path d="M10 11v6"></path>
-                      <path d="M14 11v6"></path>
-                      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                    </svg>
-                    Delete
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <button 
+                      className="action-btn copy-btn" 
+                      onClick={() => handleCopyRow(profile)}
+                    >
+                      <CopyIcon /> Copy
+                    </button>
+                    <button 
+                      className="action-btn delete-btn" 
+                      onClick={() => handleDeleteRow(profile.id)}
+                    >
+                      <TrashIcon /> Delete
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -483,6 +522,14 @@ export default function ProfileDashboard() {
         </table>
       </div>
 
+      {/* Drag Fill Active Loading Overlay */}
+      <DragFillOverlay 
+        visible={dragFill.isVisible} 
+        value={dragFill.value} 
+        count={dragFill.count} 
+      />
+
+      {/* Modals */}
       <AverageViewsModal 
         isOpen={isAvgCalcOpen} 
         onClose={() => setIsAvgCalcOpen(false)}

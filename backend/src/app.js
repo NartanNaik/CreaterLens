@@ -2,13 +2,18 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import authRoutes from "./routes/authRoutes.js";
-import profileRoutes from './routes/profileRoutes.js';
+import profileRoutes from "./routes/profileRoutes.js";
 import attributeRoutes from "./routes/attributeRoutes.js";
-import settingsRoutes from './routes/settingsRoutes.js';
+import settingsRoutes from "./routes/settingsRoutes.js";
+import stagingRoutes from "./routes/stagingRoutes.js";
+import { initializeBloomFilter } from "./services/bloomFilterService.js";
 
 dotenv.config();
 
 const app = express();
+
+// Required for express-rate-limit to accurately identify IPs behind proxies (like Vercel, Render, or Heroku)
+app.set("trust proxy", 1);
 
 const allowedOrigins = [
   process.env.CLIENT_URL,
@@ -25,18 +30,21 @@ const corsOptions = {
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      callback(new Error("Not allowed by CORS"));
     }
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
 };
 
 // 2. Apply it to standard requests
 app.use(cors(corsOptions));
 
 app.use(express.json());
+
+// Initialize the Bloom Filter in the background to warm up the cache
+initializeBloomFilter().catch(console.error);
 
 app.get("/", (req, res) => {
   res.status(200).json({
@@ -46,9 +54,10 @@ app.get("/", (req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
-app.use('/api/profiles', profileRoutes);
+app.use("/api/profiles", profileRoutes);
 app.use("/api/attributes", attributeRoutes);
-app.use('/api/settings', settingsRoutes);
+app.use("/api/settings", settingsRoutes);
+app.use("/api/staging", stagingRoutes);
 
 app.use((req, res) => {
   res.status(404).json({

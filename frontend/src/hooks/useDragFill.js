@@ -3,12 +3,14 @@ import { useState, useCallback } from 'react';
 export default function useDragFill(onFillComplete) {
   const [isDragging, setIsDragging] = useState(false);
   const [startRowIndex, setStartRowIndex] = useState(null);
+  const [currentRowIndex, setCurrentRowIndex] = useState(null); // Added to track live drag count
   const [activeColumn, setActiveColumn] = useState(null);
   const [dragValue, setDragValue] = useState(null);
 
   const handleMouseDown = (rowIndex, columnKey, value) => {
     setIsDragging(true);
     setStartRowIndex(rowIndex);
+    setCurrentRowIndex(rowIndex);
     setActiveColumn(columnKey);
     setDragValue(value);
   };
@@ -16,6 +18,7 @@ export default function useDragFill(onFillComplete) {
   const handleMouseEnter = (rowIndex, columnKey) => {
     // Only track if we are dragging within the same column
     if (isDragging && activeColumn === columnKey) {
+      setCurrentRowIndex(rowIndex);
       // You could add visual highlight states here in the future
     }
   };
@@ -34,6 +37,7 @@ export default function useDragFill(onFillComplete) {
     // Reset state
     setIsDragging(false);
     setStartRowIndex(null);
+    setCurrentRowIndex(null);
     setActiveColumn(null);
     setDragValue(null);
   }, [isDragging, activeColumn, startRowIndex, dragValue, onFillComplete]);
@@ -43,16 +47,27 @@ export default function useDragFill(onFillComplete) {
     if (isDragging) {
       setIsDragging(false);
       setStartRowIndex(null);
+      setCurrentRowIndex(null);
       setActiveColumn(null);
       setDragValue(null);
     }
   }, [isDragging]);
+
+  // Calculate dynamic feedback for the DragFillOverlay UI
+  const count = startRowIndex !== null && currentRowIndex !== null 
+    ? Math.abs(currentRowIndex - startRowIndex) + 1 
+    : 0;
+  
+  const isVisible = isDragging && count > 1;
 
   return {
     handleMouseDown,
     handleMouseEnter,
     handleMouseUp,
     handleGlobalMouseUp,
-    isDragging
+    isDragging,
+    isVisible, // Controls visibility of the overlay
+    value: dragValue, // Passes the data being copied to the overlay
+    count // Shows the user how many rows they are about to overwrite
   };
 }

@@ -1,5 +1,27 @@
 import React, { useState } from 'react';
 
+// --- Inline SVGs (No Emojis) ---
+const XIcon = () => (
+  <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+  </svg>
+);
+
+const UploadCloudIcon = () => (
+  <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="16 16 12 12 8 16"></polyline>
+    <line x1="12" y1="12" x2="12" y2="21"></line>
+    <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"></path>
+    <polyline points="16 16 12 12 8 16"></polyline>
+  </svg>
+);
+
+const CheckIcon = () => (
+  <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="20 6 9 17 4 12"></polyline>
+  </svg>
+);
+
 export default function MassUploadModal({ isOpen, onClose, onUploadComplete }) {
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
@@ -13,7 +35,7 @@ export default function MassUploadModal({ isOpen, onClose, onUploadComplete }) {
     setResult(null);
 
     try {
-      const response = await fetch('/api/profiles/mass-upload', {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/profiles/mass-upload`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -25,7 +47,7 @@ export default function MassUploadModal({ isOpen, onClose, onUploadComplete }) {
       const data = await response.json();
       setResult(`Processed ${data.totalSubmitted}. Added: ${data.added}, Skipped (Duplicates): ${data.skipped}`);
       
-      if (data.newProfiles.length > 0) {
+      if (data.newProfiles && data.newProfiles.length > 0) {
         onUploadComplete(data.newProfiles);
       }
       
@@ -38,43 +60,73 @@ export default function MassUploadModal({ isOpen, onClose, onUploadComplete }) {
     }
   };
 
+  const handleClose = () => {
+    setResult(null);
+    setText('');
+    onClose();
+  };
+
   return (
-    <div className="modal-overlay">
-      <div className="glass-panel modal-content mass-upload-modal">
-        <h2>Mass Upload Profiles</h2>
-        <p className="mass-upload-subtitle">
-          Paste a list of usernames separated by a new line. Duplicates will be automatically ignored.
-        </p>
+    <div className="modal-overlay" onClick={handleClose}>
+      <div className="mass-modal-container glass-panel" onClick={(e) => e.stopPropagation()}>
         
-        <textarea 
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="user1&#10;user2&#10;user3"
-          rows="10"
-          className="mass-upload-textarea"
-        />
-
-        {result && (
-          <div className="mass-upload-result">
-            {result}
-          </div>
-        )}
-
-        <div className="modal-actions mass-upload-actions">
+        {/* Header */}
+        <div className="mass-modal-header">
+          <h2 className="mass-modal-title">
+            <UploadCloudIcon /> Mass Upload Profiles
+          </h2>
           <button 
-            onClick={onClose}
-            className="modal-close-btn"
+            onClick={handleClose}
+            className="mass-modal-close-btn"
+          >
+            <XIcon />
+          </button>
+        </div>
+        
+        {/* Body */}
+        <div className="mass-modal-body">
+          <p className="mass-modal-desc">
+            Paste a list of usernames separated by a new line. Duplicates will be automatically ignored using our high-speed cache.
+          </p>
+          
+          <textarea 
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="user1&#10;user2&#10;user3"
+            rows="10"
+            className="mass-modal-textarea"
+          />
+
+          {result && (
+            <div className="mass-modal-result-box">
+              {result}
+            </div>
+          )}
+        </div>
+
+        {/* Footer Actions */}
+        <div className="mass-modal-footer">
+          <button 
+            onClick={handleClose}
+            className="mass-modal-cancel-btn"
           >
             Close
           </button>
           <button 
             onClick={handleUpload}
             disabled={loading || !text.trim()}
-            className="modal-process-btn"
+            className="mass-modal-submit-btn"
           >
-            {loading ? 'Uploading...' : 'Process Upload'}
+            {loading ? (
+              "Uploading..."
+            ) : (
+              <>
+                <CheckIcon /> Process Upload
+              </>
+            )}
           </button>
         </div>
+
       </div>
     </div>
   );

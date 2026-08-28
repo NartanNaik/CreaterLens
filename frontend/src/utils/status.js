@@ -1,23 +1,23 @@
 const statusList = [
   {
     value: "Available",
-    color: "#137333"
+    color: "#4ade80"
   },
   {
     value: "Reserved",
-    color: "#B06000"
+    color: "#fbbf24"
   },
   {
     value: "Using",
-    color: "#1A73E8"
+    color: "#60a5fa"
   },
   {
     value: "Sold",
-    color: "#C5221F"
+    color: "#c084fc"
   },
   {
     value: "Rejected",
-    color: "#7B1FA2"
+    color: "#f87171"
   }
 ];
 

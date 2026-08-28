@@ -8,6 +8,7 @@ import {
   bulkUpdateAttributeController
 } from "../controllers/attributeController.js";
 import { authMiddleware } from "../middleware/authMiddleware.js";
+import { validateAttribute } from "../middleware/validateAttribute.js";
 
 const router = Router();
 
@@ -41,9 +42,11 @@ router.put(
   updateNotesController
 );
 
+// Apply the validation middleware to protect dynamic column bulk updates
 router.put(
   "/bulk-update",
   authMiddleware,
+  validateAttribute,
   bulkUpdateAttributeController
 );
 

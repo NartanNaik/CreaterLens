@@ -1,6 +1,7 @@
 import { db } from '../config/firebase.js';
+import * as bloomFilterService from './bloomFilterService.js';
 
-// We are now targeting the new 'profiles' collection
+// We are targeting the active 'profiles' collection
 const profilesCollection = db.collection('profiles');
 
 /**
@@ -15,7 +16,7 @@ export const checkProfileExists = async (username) => {
 
 /**
  * 2. The Insertion Logic
- * Creates a new profile with the specific fields required for the new system.
+ * Creates a new profile with strict numeric validation and syncs it to the Bloom Filter.
  */
 export const addProfile = async (profileData) => {
     const normalizedUsername = profileData.username.toLowerCase().trim();
@@ -36,13 +37,18 @@ export const addProfile = async (profileData) => {
         specialPart: profileData.specialPart || '',
         ageRange: profileData.ageRange || '',
         playable: profileData.playable || false,
-        totalFollowers: Number(profileData.totalFollowers) || 0,
-        avgViewsPerWeek: Number(profileData.avgViewsPerWeek) || 0,
+        // Edge Case Protection: Force non-negative integers. No NaNs.
+        totalFollowers: Math.max(0, parseInt(profileData.totalFollowers, 10) || 0),
+        avgViewsPerWeek: Math.max(0, parseInt(profileData.avgViewsPerWeek, 10) || 0),
         customCategories: profileData.customCategories || {},
-        createdAt: new Date().toISOString() // Using standard ISO-8601 strings
+        createdAt: new Date().toISOString()
     };
 
     const docRef = await profilesCollection.add(newProfile);
+    
+    // Sync with memory cache
+    bloomFilterService.add(normalizedUsername);
+
     return { id: docRef.id, ...newProfile };
 };
 
@@ -60,18 +66,24 @@ export const getProfiles = async () => {
 
 /**
  * 4. The Update Logic
- * Updates specific fields of an existing profile (e.g., avgViewsPerWeek or custom categories).
+ * Updates specific fields of an existing profile with numeric safety nets.
  */
 export const updateProfile = async (profileId, updateData) => {
     const docRef = profilesCollection.doc(profileId);
     
-    // Check if the document actually exists before updating
     const doc = await docRef.get();
     if (!doc.exists) {
         throw new Error('Profile not found.');
     }
 
-    // Perform a partial update
+    // Edge Case Protection: Ensure any numeric updates are non-negative
+    if (updateData.totalFollowers !== undefined) {
+        updateData.totalFollowers = Math.max(0, parseInt(updateData.totalFollowers, 10) || 0);
+    }
+    if (updateData.avgViewsPerWeek !== undefined) {
+        updateData.avgViewsPerWeek = Math.max(0, parseInt(updateData.avgViewsPerWeek, 10) || 0);
+    }
+
     await docRef.update(updateData);
     
     return { id: profileId, ...updateData };
@@ -79,40 +91,47 @@ export const updateProfile = async (profileId, updateData) => {
 
 /**
  * 5. The Delete Logic
- * Removes a specific profile from the database by its ID.
+ * Removes a profile and clears its handle from the Bloom Filter memory cache.
  */
 export const deleteProfile = async (profileId) => {
-    await profilesCollection.doc(profileId).delete();
+    const docRef = profilesCollection.doc(profileId);
+    const doc = await docRef.get();
+    
+    if (doc.exists) {
+        const data = doc.data();
+        // Remove from memory cache so it can be staged again if needed
+        bloomFilterService.remove(data.normalizedUsername);
+        await docRef.delete();
+    }
+    
     return true;
 };
 
 /**
  * 6. Mass Upload Logic
- * Efficiently processes bulk uploads using in-memory Sets and batched Firestore writes.
+ * Efficiently processes bulk uploads, sanitizes data, and syncs the cache.
  */
 export const massUploadProfiles = async (usernamesString) => {
     // 1. Split string by newlines, trim, and remove internal duplicates
     const rawNames = usernamesString.split('\n').map(name => name.trim()).filter(Boolean);
     const uniqueInputNames = [...new Set(rawNames)];
 
-    // 2. Fetch all existing normalized usernames to prevent an O(N) database read waterfall
-    const snapshot = await profilesCollection.select('normalizedUsername').get();
-    const existingUsernames = new Set(snapshot.docs.map(doc => doc.data().normalizedUsername));
+    // 2. Fast filter using our in-memory Bloom Filter before hitting Firestore
+    const newNames = uniqueInputNames.filter(name => !bloomFilterService.has(name));
 
-    // 3. Filter out names that already exist in the database
-    const newNames = uniqueInputNames.filter(name => !existingUsernames.has(name.toLowerCase()));
-
-    // 4. Chunk inserts into batches (Firestore limit is 500 per batch)
+    // 3. Chunk inserts into batches (Firestore limit is 500 per batch)
     const addedProfiles = [];
     let currentBatch = db.batch();
     let operationCount = 0;
     const batchPromises = [];
 
     for (const username of newNames) {
-        const docRef = profilesCollection.doc(); // Generate a new ID
+        const normalizedUsername = username.toLowerCase();
+        const docRef = profilesCollection.doc(); 
+        
         const profileData = {
             username,
-            normalizedUsername: username.toLowerCase(),
+            normalizedUsername,
             nation: '', skinTone: 'Fair', bodyType: 'Fit', reelType: 'Hot',
             specialPart: 'Whole body', ageRange: '18 to 28', playable: false,
             totalFollowers: 0, avgViewsPerWeek: 0, customCategories: {},
@@ -121,6 +140,10 @@ export const massUploadProfiles = async (usernamesString) => {
 
         currentBatch.set(docRef, profileData);
         addedProfiles.push({ id: docRef.id, ...profileData });
+        
+        // Update Bloom Filter immediately
+        bloomFilterService.add(normalizedUsername);
+        
         operationCount++;
 
         // Commit and reset batch if we near the 500 limit

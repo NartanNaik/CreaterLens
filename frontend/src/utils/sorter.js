@@ -33,6 +33,34 @@ export const sortUsernames = (
         )
       );
 
+    case "followers-high":
+      return list.sort(
+        (a, b) =>
+          (b.totalFollowers || 0) -
+          (a.totalFollowers || 0)
+      );
+
+    case "followers-low":
+      return list.sort(
+        (a, b) =>
+          (a.totalFollowers || 0) -
+          (b.totalFollowers || 0)
+      );
+
+    case "views-high":
+      return list.sort(
+        (a, b) =>
+          (b.avgViewsPerWeek || 0) -
+          (a.avgViewsPerWeek || 0)
+      );
+
+    case "views-low":
+      return list.sort(
+        (a, b) =>
+          (a.avgViewsPerWeek || 0) -
+          (b.avgViewsPerWeek || 0)
+      );
+
     case "interest-high":
       return list.sort(
         (a, b) =>

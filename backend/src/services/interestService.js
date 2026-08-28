@@ -4,17 +4,24 @@ export const calculateInterestRate = ({
   mentions = 0,
   reactions = 0
 }) => {
+  // Edge Case: Force inputs to be non-negative numbers, defaulting to 0 if NaN/invalid
+  const safeMessages = Math.max(0, Number(messages) || 0);
+  const safeReplies = Math.max(0, Number(replies) || 0);
+  const safeMentions = Math.max(0, Number(mentions) || 0);
+  const safeReactions = Math.max(0, Number(reactions) || 0);
+
   const interestRate =
-    messages * 0.4 +
-    replies * 0.3 +
-    mentions * 0.2 +
-    reactions * 0.1;
+    safeMessages * 0.4 +
+    safeReplies * 0.3 +
+    safeMentions * 0.2 +
+    safeReactions * 0.1;
 
   return {
-    messages: Number(messages),
-    replies: Number(replies),
-    mentions: Number(mentions),
-    reactions: Number(reactions),
+    messages: safeMessages,
+    replies: safeReplies,
+    mentions: safeMentions,
+    reactions: safeReactions,
+    // toFixed returns a string, so we cast it back to a clean Number
     interestRate: Number(interestRate.toFixed(2))
   };
 };
