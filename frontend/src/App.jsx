@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Login from "./components/Login";
 import ProfileDashboard from "./components/ProfileDashboard";
+import StagingQueue from "./components/StagingQueue"; // Import your staging queue
 import ProtectedRoute from "./components/ProtectedRoute";
 import "./App.css";
 
@@ -14,6 +15,14 @@ function App() {
           element={
             <ProtectedRoute>
               <ProfileDashboard />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/staging" 
+          element={
+            <ProtectedRoute>
+              <StagingQueue />
             </ProtectedRoute>
           } 
         />

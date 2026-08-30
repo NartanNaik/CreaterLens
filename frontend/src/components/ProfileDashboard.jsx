@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import AverageViewsModal from './AverageViewsModal';
 import CustomCategoryBuilder from './CustomCategoryBuilder';
 import ProfileChecker from './ProfileChecker';
@@ -11,6 +12,22 @@ import useDragFill from '../hooks/useDragFill';
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
 // --- Inline SVGs (No Emojis) ---
+const LayersIcon = () => (
+  <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}>
+    <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+    <polyline points="2 17 12 22 22 17"></polyline>
+    <polyline points="2 12 12 17 22 12"></polyline>
+  </svg>
+);
+
+const ExternalLinkIcon = () => (
+  <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+    <polyline points="15 3 21 3 21 9"></polyline>
+    <line x1="10" y1="14" x2="21" y2="3"></line>
+  </svg>
+);
+
 const SearchIcon = () => (
   <svg className="search-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="11" cy="11" r="8"></circle>
@@ -57,8 +74,10 @@ const TrashIcon = () => (
 );
 
 export default function ProfileDashboard() {
+  const navigate = useNavigate();
   const [profiles, setProfiles] = useState([]);
   const [customColumns, setCustomColumns] = useState([]);
+  const [loading, setLoading] = useState(false);
   
   const [isAvgCalcOpen, setIsAvgCalcOpen] = useState(false);
   const [isAddCategoryOpen, setIsAddCategoryOpen] = useState(false);
@@ -219,6 +238,43 @@ export default function ProfileDashboard() {
     return processed;
   }, [profiles, searchQuery, sortConfig, customColumns]);
 
+  // --- NEW: Copy All & Delete All visible entries ---
+  const handleCopyAll = () => {
+    if (filteredAndSortedProfiles.length === 0) return;
+    const textToCopy = filteredAndSortedProfiles.map(p => 
+      `@${p.username} | Followers: ${p.totalFollowers} | Views: ${p.avgViewsPerWeek} | Likes: ${p.avgLikes} | Comments: ${p.avgComments}`
+    ).join('\n');
+    
+    navigator.clipboard.writeText(textToCopy)
+      .then(() => alert(`Copied ${filteredAndSortedProfiles.length} profiles to clipboard!`))
+      .catch(err => console.error('Failed to copy text: ', err));
+  };
+
+  const handleDeleteAll = async () => {
+    if (filteredAndSortedProfiles.length === 0) return;
+    const confirmDelete = window.confirm(`Are you sure you want to permanently delete all ${filteredAndSortedProfiles.length} visible profiles?`);
+    if (!confirmDelete) return;
+
+    setLoading(true);
+    const idsToDelete = filteredAndSortedProfiles.map(p => p.id);
+    
+    // Optimistically update UI
+    setProfiles(prev => prev.filter(p => !idsToDelete.includes(p.id)));
+
+    try {
+      await Promise.all(idsToDelete.map(id => 
+        fetch(`${API_BASE}/api/profiles/${id}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        })
+      ));
+    } catch (error) {
+      console.error("Failed to delete all profiles:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleCellEdit = async (profileId, field, newValue, isCustom = false) => {
     setProfiles(profiles.map(p => {
       if (p.id !== profileId) return p;
@@ -293,54 +349,91 @@ export default function ProfileDashboard() {
 
   const dragFill = useDragFill(handleDragFillComplete);
 
+  // Reusable component for sortable headers
+  const SortableHeader = ({ label, sortKey }) => (
+    <th onClick={() => handleSort(sortKey)} className="sortable-header" style={{ cursor: 'pointer', whiteSpace: 'nowrap' }}>
+      {label} {sortConfig.key === sortKey ? (sortConfig.direction === 'asc' ? ' ↑' : ' ↓') : ''}
+    </th>
+  );
+
   return (
     <div className="dashboard-container" onMouseUp={dragFill.handleGlobalMouseUp}>
+      
+      {/* Top Action Toolbar - Completely un-cramps the table headers! */}
+      <div className="dashboard-toolbar glass-panel" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', marginBottom: '16px', gap: '16px', flexWrap: 'wrap' }}>
+        
+        {/* Left: Search Bar */}
+        <div className="search-bar-container" style={{ margin: 0, flex: 1, minWidth: '250px' }}>
+          <SearchIcon />
+          <input 
+            type="text" 
+            placeholder="Search by username or nation..." 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="search-input"
+            style={{ width: '100%' }}
+          />
+        </div>
+
+        {/* Right: Master Buttons */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <button onClick={handleCopyAll} className="action-btn copy-btn" style={{ padding: '8px 12px' }}>
+            <CopyIcon /> Copy All
+          </button>
+          <button onClick={handleDeleteAll} disabled={loading} className="action-btn delete-btn" style={{ padding: '8px 12px' }}>
+            <TrashIcon /> {loading ? "Deleting..." : "Delete All"}
+          </button>
+          
+          <div style={{ width: '1px', height: '24px', backgroundColor: 'var(--border-light)', margin: '0 4px' }}></div>
+          
+          <button className="add-category-btn" onClick={() => navigate('/staging')} style={{ padding: '8px 12px' }}>
+            <LayersIcon /> Inbox / Staging
+          </button>
+          <button className="add-category-btn" onClick={() => setIsAddCategoryOpen(true)} style={{ padding: '8px 12px' }}>
+            <PlusIcon /> Add Category
+          </button>
+          <button className="add-category-btn mass-upload-btn" onClick={() => setIsMassUploadOpen(true)} style={{ padding: '8px 12px' }}>
+            <UploadCloudIcon /> Mass Upload
+          </button>
+        </div>
+      </div>
       
       {/* Profile Checker Component */}
       <ProfileChecker 
         onProfileAdded={handleProfileAdded} 
         customColumns={customColumns} 
       />
-
-      {/* Search Bar */}
-      <div className="search-bar-container">
-        <SearchIcon />
-        <input 
-          type="text" 
-          placeholder="Search by username or nation..." 
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="search-input"
-        />
-      </div>
       
       {/* Table Wrapper */}
       <div className="table-wrapper glass-panel">
         <table className="profile-table">
           <thead>
             <tr>
-              <th>ID / Username</th>
-              <th>Nation</th>
-              <th>Skin Tone</th>
-              <th>Body Type</th>
-              <th>Reel Type</th>
-              <th>Special Part</th>
-              <th>Age</th>
-              <th>Playable</th>
-              <th onClick={() => handleSort('totalFollowers')} className="sortable-header">
-                Total Followers {sortConfig.key === 'totalFollowers' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
-              </th>
-              <th onClick={() => handleSort('avgViewsPerWeek')} className="sortable-header">
-                Avg Views/Week {sortConfig.key === 'avgViewsPerWeek' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
-              </th>
+              <SortableHeader label="ID / Username" sortKey="username" />
+              <th>Link</th>
+              <SortableHeader label="Nation" sortKey="nation" />
+              <SortableHeader label="Skin Tone" sortKey="skinTone" />
+              <SortableHeader label="Body Type" sortKey="bodyType" />
+              <SortableHeader label="Reel Type" sortKey="reelType" />
+              <SortableHeader label="Special Part" sortKey="specialPart" />
+              <SortableHeader label="Age" sortKey="ageRange" />
+              <SortableHeader label="Playable" sortKey="playable" />
+              <SortableHeader label="Followers" sortKey="totalFollowers" />
+              <SortableHeader label="Avg Views" sortKey="avgViewsPerWeek" />
+              <SortableHeader label="Avg Likes" sortKey="avgLikes" />
+              <SortableHeader label="Avg Comments" sortKey="avgComments" />
               
               {customColumns.map(col => (
-                <th key={col.columnId}>
+                <th key={col.columnId} onClick={() => handleSort(col.columnId)} className="sortable-header" style={{ cursor: 'pointer', whiteSpace: 'nowrap' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span>{col.displayName}</span>
+                    <span>
+                      {col.displayName}
+                      {sortConfig.key === col.columnId ? (sortConfig.direction === 'asc' ? ' ↑' : ' ↓') : ''}
+                    </span>
                     <button 
                       className="edit-col-btn"
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation(); // Prevents sorting when clicking settings icon
                         setSelectedColumn(col);
                         setIsManageColOpen(true);
                       }}
@@ -352,22 +445,6 @@ export default function ProfileDashboard() {
                 </th>
               ))}
               
-              <th style={{ textAlign: 'right' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
-                  <button 
-                    className="add-category-btn"
-                    onClick={() => setIsAddCategoryOpen(true)}
-                  >
-                    <PlusIcon /> Add Category
-                  </button>
-                  <button 
-                    className="add-category-btn mass-upload-btn"
-                    onClick={() => setIsMassUploadOpen(true)}
-                  >
-                    <UploadCloudIcon /> Mass Upload
-                  </button>
-                </div>
-              </th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -376,6 +453,20 @@ export default function ProfileDashboard() {
             {filteredAndSortedProfiles.map((profile, index) => (
               <tr key={profile.id}>
                 <td style={{ fontWeight: '600' }}>{profile.username}</td>
+                
+                <td>
+                  {profile.sourceUrl ? (
+                    <a 
+                      href={profile.sourceUrl} 
+                      target="_blank" 
+                      rel="noreferrer" 
+                      className="action-btn"
+                      style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 8px', backgroundColor: 'var(--surface-sunken)', border: '1px solid var(--border-light)', borderRadius: '4px' }}
+                    >
+                      <ExternalLinkIcon /> View
+                    </a>
+                  ) : '-'}
+                </td>
                 
                 <td 
                   onMouseDown={() => dragFill.handleMouseDown(index, 'nation', profile.nation)}
@@ -482,6 +573,30 @@ export default function ProfileDashboard() {
                   {profile.avgViewsPerWeek > 0 ? profile.avgViewsPerWeek.toLocaleString() : 'Calculate ➔'}
                 </td>
 
+                <td 
+                  onMouseDown={() => dragFill.handleMouseDown(index, 'avgLikes', profile.avgLikes)}
+                  onMouseEnter={() => dragFill.handleMouseEnter(index, 'avgLikes')}
+                  onMouseUp={() => dragFill.handleMouseUp(index, 'avgLikes')}
+                >
+                  <EditableCell 
+                    type="number" 
+                    value={profile.avgLikes || 0} 
+                    onSave={(val) => handleCellEdit(profile.id, 'avgLikes', Number(val))} 
+                  />
+                </td>
+
+                <td 
+                  onMouseDown={() => dragFill.handleMouseDown(index, 'avgComments', profile.avgComments)}
+                  onMouseEnter={() => dragFill.handleMouseEnter(index, 'avgComments')}
+                  onMouseUp={() => dragFill.handleMouseUp(index, 'avgComments')}
+                >
+                  <EditableCell 
+                    type="number" 
+                    value={profile.avgComments || 0} 
+                    onSave={(val) => handleCellEdit(profile.id, 'avgComments', Number(val))} 
+                  />
+                </td>
+
                 {customColumns.map(col => (
                   <td 
                     key={col.columnId}
@@ -497,8 +612,6 @@ export default function ProfileDashboard() {
                     />
                   </td>
                 ))}
-                
-                <td></td>
                 
                 <td>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

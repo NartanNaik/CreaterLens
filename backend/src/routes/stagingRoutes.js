@@ -3,7 +3,10 @@ import {
     shareReelController, 
     getStagingQueueController, 
     processStagingItemController, 
-    deleteStagingItemController 
+    deleteStagingItemController,
+    approveStagingItemController,
+    bulkApproveStagingItemsController,
+    bulkDeleteStagingItemsController
 } from '../controllers/stagingController.js';
 import { verifyToken } from '../middleware/authMiddleware.js';
 import rateLimit from 'express-rate-limit';
@@ -43,8 +46,17 @@ router.post('/share', shareLimiter, shareReelController);
 // Route to fetch all pending items for the UI dashboard
 router.get('/', getStagingQueueController);
 
+// Route to handle bulk approval of staged items (Must be before /:id routes)
+router.post('/bulk-approve', bulkApproveStagingItemsController);
+
+// Route to handle mass deletion of staged items
+router.post('/bulk-delete', bulkDeleteStagingItemsController);
+
 // Route to trigger the Gemini AI on a specific queued item
 router.post('/:id/process', aiProcessLimiter, processStagingItemController);
+
+// Route to approve a specific queued item and move it to the main profile database
+router.post('/:id/approve', approveStagingItemController);
 
 // Route to discard/delete an item from the queue without saving
 router.delete('/:id', deleteStagingItemController);
