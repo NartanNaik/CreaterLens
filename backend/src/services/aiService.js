@@ -4,33 +4,65 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-// Dynamically load keys from a comma-separated string (e.g., GEMINI_API_KEYS="key1,key2,key3")
+// Dynamically load keys from all providers into a unified rotation fleet
 const getApiKeys = () => {
+  const providers = [];
+
+  // 1. Gemini Keys (Prioritized)
   if (process.env.GEMINI_API_KEYS) {
-    const keys = process.env.GEMINI_API_KEYS.split(',').map(key => key.trim()).filter(Boolean);
-    if (keys.length > 0) return keys;
+    process.env.GEMINI_API_KEYS.split(',').map(key => key.trim()).filter(Boolean)
+      .forEach(key => providers.push({ type: 'gemini', key }));
+  } else {
+    Object.keys(process.env).filter((key) => key.startsWith("GEMINI_API_KEY")).forEach((key) => {
+      if (process.env[key]) providers.push({ type: 'gemini', key: process.env[key] });
+    });
   }
-  
-  const numberedKeys = Object.keys(process.env)
-    .filter((key) => key.startsWith("GEMINI_API_KEY"))
-    .map((key) => process.env[key])
-    .filter(Boolean);
-  
-  return numberedKeys.length > 0 ? numberedKeys : null;
+
+  // 2. Groq Keys
+  if (process.env.GROQ_API_KEYS) {
+    process.env.GROQ_API_KEYS.split(',').map(key => key.trim()).filter(Boolean)
+      .forEach(key => providers.push({ type: 'groq', key }));
+  } else {
+    Object.keys(process.env).filter((key) => key.startsWith("GROQ_API_KEY")).forEach((key) => {
+      if (process.env[key]) providers.push({ type: 'groq', key: process.env[key] });
+    });
+  }
+
+  // 3. OpenRouter Keys
+  if (process.env.OPENROUTER_API_KEYS) {
+    process.env.OPENROUTER_API_KEYS.split(',').map(key => key.trim()).filter(Boolean)
+      .forEach(key => providers.push({ type: 'openrouter', key }));
+  } else {
+    Object.keys(process.env).filter((key) => key.startsWith("OPENROUTER_API_KEY")).forEach((key) => {
+      if (process.env[key]) providers.push({ type: 'openrouter', key: process.env[key] });
+    });
+  }
+
+  // 4. Pollinations Key
+  if (process.env.POLLINATIONS_API_KEY) {
+    providers.push({ type: 'pollinations', key: process.env.POLLINATIONS_API_KEY });
+  }
+
+  return providers.length > 0 ? providers : null;
 };
 
-// Helper to fetch the image and convert to Base64 for Gemini Vision
+// Helper to fetch the image and return both Gemini format AND standard OpenAI base64 format
 const fetchImageAsBase64 = async (imageUrl) => {
   if (!imageUrl) return null;
   try {
     const response = await axios.get(imageUrl, { responseType: "arraybuffer", timeout: 5000 });
     const buffer = Buffer.from(response.data, "binary");
     const mimeType = response.headers["content-type"] || "image/jpeg";
+    const base64Data = buffer.toString("base64");
+    
     return {
-      inlineData: {
-        data: buffer.toString("base64"),
-        mimeType
-      }
+      geminiFormat: {
+        inlineData: {
+          data: base64Data,
+          mimeType
+        }
+      },
+      openAiFormat: `data:${mimeType};base64,${base64Data}`
     };
   } catch (error) {
     console.warn("⚠️ Failed to fetch thumbnail for AI analysis, proceeding with text only.");
@@ -38,32 +70,68 @@ const fetchImageAsBase64 = async (imageUrl) => {
   }
 };
 
-/**
- * THE USER'S GENIUS IDEA: DYNAMIC MODEL DISCOVERY
- * Asks Google's API for the live list of models this key can access, 
- * and automatically picks the newest/best "flash" model available.
- */
 const getBestDynamicModel = async (apiKey) => {
   try {
     const response = await axios.get(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
-    
-    // Filter the live list for models that generate content, are fast ("flash"), and aren't experimental/tuning models
     const availableFlashModels = response.data.models
       .map(m => m.name.replace('models/', ''))
       .filter(name => name.includes('flash') && !name.includes('vision') && !name.includes('tuning'));
     
     if (availableFlashModels.length > 0) {
-      // Sort alphabetically descending so newer versions (gemini-2.0) are picked before older ones (gemini-1.5)
       const bestModel = availableFlashModels.sort().reverse()[0];
-      console.log(`🧠 [AI Engine] Dynamically selected best available model: ${bestModel}`);
       return bestModel;
     }
   } catch (error) {
-    console.warn("⚠️ [AI Engine] Dynamic discovery failed. Reverting to rock-solid default.");
+    console.warn("⚠️ [AI Engine] Dynamic discovery failed for Gemini. Reverting to default.");
   }
-  
-  // The ultimate safe fallback if the live-fetch fails
   return "gemini-1.5-flash"; 
+};
+
+// Universal OpenAI-compatible Caller for Groq, OpenRouter, and Pollinations
+const callOpenAICompatible = async (provider, textPrompt, imagePartBase64) => {
+  let url = "";
+  let model = "";
+  let headers = {
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${provider.key}`
+  };
+
+  // Configure endpoints and assign the best free vision models per provider
+  if (provider.type === "groq") {
+    url = "https://api.groq.com/openai/v1/chat/completions";
+    model = "llama-3.2-90b-vision-preview"; // Groq's blazing fast Llama 3.2 Vision
+  } else if (provider.type === "openrouter") {
+    url = "https://openrouter.ai/api/v1/chat/completions";
+    model = "qwen/qwen-2.5-vl-72b-instruct:free"; // Extremely powerful free vision model on OpenRouter
+    headers["HTTP-Referer"] = "https://creatorlens.local"; 
+    headers["X-Title"] = "CreatorLens Pipeline";
+  } else if (provider.type === "pollinations") {
+    url = "https://text.pollinations.ai/openai/chat/completions";
+    model = "openai"; 
+  }
+
+  const messages = [
+    { role: "system", content: SYSTEM_PROMPT },
+    { role: "user", content: [{ type: "text", text: textPrompt }] }
+  ];
+
+  if (imagePartBase64) {
+    messages[1].content.push({
+      type: "image_url",
+      image_url: { url: imagePartBase64 }
+    });
+  }
+
+  const response = await axios.post(url, {
+    model: model,
+    messages: messages,
+    response_format: { type: "json_object" },
+    temperature: 0.4
+  }, { headers, timeout: 30000 });
+
+  let responseText = response.data.choices[0].message.content;
+  responseText = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
+  return JSON.parse(responseText);
 };
 
 const SYSTEM_PROMPT = `
@@ -105,7 +173,7 @@ export const analyzeReelMedia = async ({ videoUrl, thumbnailUrl, caption, userna
   const apiKeys = getApiKeys();
 
   if (!apiKeys) {
-    throw new Error("No Gemini API keys found. Please add GEMINI_API_KEYS to your .env file.");
+    throw new Error("No API keys found. Please add GEMINI, GROQ, OPENROUTER, or POLLINATIONS keys to your .env file.");
   }
 
   const imagePart = await fetchImageAsBase64(thumbnailUrl);
@@ -118,52 +186,59 @@ export const analyzeReelMedia = async ({ videoUrl, thumbnailUrl, caption, userna
     Dynamically analyze the visual and textual data to classify the account type (Female, Male, Brand), determine the clean handle, engagement metrics, and profile attributes.
   `;
 
-  const requestContents = imagePart 
-    ? [contentPrompt, imagePart] 
-    : [contentPrompt];
-
-  // Key-Rotation Cascade
+  // Key-Rotation Cascade across ALL providers
   for (let keyIndex = 0; keyIndex < apiKeys.length; keyIndex++) {
-    const currentKey = apiKeys[keyIndex];
+    const provider = apiKeys[keyIndex];
     
-    // Dynamically figure out what the best model for this specific key is right now
-    const targetModel = await getBestDynamicModel(currentKey);
-    
-    const ai = new GoogleGenAI({ apiKey: currentKey });
-
     try {
-      const response = await ai.models.generateContent({
-        model: targetModel,
-        contents: requestContents,
-        config: {
-          systemInstruction: SYSTEM_PROMPT,
-          responseMimeType: "application/json",
-          temperature: 0.4 
-        }
-      });
+      if (provider.type === 'gemini') {
+        const targetModel = await getBestDynamicModel(provider.key);
+        console.log(`🧠 [AI Engine] Trying Gemini Model: ${targetModel}`);
+        
+        const ai = new GoogleGenAI({ apiKey: provider.key });
+        const requestContents = imagePart ? [contentPrompt, imagePart.geminiFormat] : [contentPrompt];
+        
+        const response = await ai.models.generateContent({
+          model: targetModel,
+          contents: requestContents,
+          config: {
+            systemInstruction: SYSTEM_PROMPT,
+            responseMimeType: "application/json",
+            temperature: 0.4 
+          }
+        });
 
-      let responseText = response.text;
-      
-      responseText = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
-      const parsedJson = JSON.parse(responseText);
+        let responseText = response.text;
+        responseText = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
+        return JSON.parse(responseText);
 
-      return parsedJson;
+      } else {
+        console.log(`🧠 [AI Engine] Trying ${provider.type.toUpperCase()} Model...`);
+        return await callOpenAICompatible(provider, contentPrompt, imagePart ? imagePart.openAiFormat : null);
+      }
 
     } catch (error) {
-      const isRateLimit = error.status === 429 || error.message?.includes("429") || error.message?.includes("quota");
+      const isRateLimit = error.status === 429 || error.message?.includes("429") || error.message?.includes("quota") || error.response?.status === 429;
       
-      console.warn(`⚠️ [AI Engine] Key ${keyIndex + 1} | Model ${targetModel} failed: ${error.message}`);
+      console.warn(`⚠️ [AI Engine] ${provider.type.toUpperCase()} Provider failed: ${error.message}`);
 
-      // If the key is exhausted, loop to the next key. If this was the last key, it throws the error below.
       if (isRateLimit) {
-        console.warn(`🔄 [AI Engine] Quota exhausted for Key ${keyIndex + 1}. Rotating to next API Key...`);
+        console.warn(`🔄 [AI Engine] Quota exhausted for ${provider.type}. Rotating to next provider...`);
         continue; 
       }
       
-      // If it's a random crash (not a quota issue), we can throw so the stagingController marks it "Failed. Retry?"
-      throw error; 
+      // If a specific provider model rejects the vision payload, rotate gracefully
+      if (error.response?.status === 400 || error.message?.includes("vision")) {
+        console.warn(`🔄 [AI Engine] Model compatibility issue with ${provider.type}. Rotating...`);
+        continue;
+      }
+      
+      // If it's a random crash and it's the absolute last key in your fleet, throw it back to the queue
+      if (keyIndex === apiKeys.length - 1) {
+        throw error; 
+      }
     }
   }
 
-  throw new Error("All API keys exhausted or rate-limited. Please check your Google Cloud quotas.");
+  throw new Error("All API providers exhausted or rate-limited. The cascade is empty.");
 };
