@@ -96,13 +96,12 @@ const callOpenAICompatible = async (provider, textPrompt, imagePartBase64) => {
     "Authorization": `Bearer ${provider.key}`
   };
 
-  // Configure endpoints and assign the best free vision models per provider
   if (provider.type === "groq") {
     url = "https://api.groq.com/openai/v1/chat/completions";
-    model = "llama-3.2-90b-vision-preview"; // Groq's blazing fast Llama 3.2 Vision
+    model = "llama-3.2-11b-vision-preview"; 
   } else if (provider.type === "openrouter") {
     url = "https://openrouter.ai/api/v1/chat/completions";
-    model = "qwen/qwen-2.5-vl-72b-instruct:free"; // Extremely powerful free vision model on OpenRouter
+    model = "openrouter/free"; 
     headers["HTTP-Referer"] = "https://creatorlens.local"; 
     headers["X-Title"] = "CreatorLens Pipeline";
   } else if (provider.type === "pollinations") {
@@ -110,13 +109,17 @@ const callOpenAICompatible = async (provider, textPrompt, imagePartBase64) => {
     model = "openai"; 
   }
 
+  const combinedText = `${SYSTEM_PROMPT}\n\n${textPrompt}`;
+
   const messages = [
-    { role: "system", content: SYSTEM_PROMPT },
-    { role: "user", content: [{ type: "text", text: textPrompt }] }
+    { 
+      role: "user", 
+      content: [{ type: "text", text: combinedText }] 
+    }
   ];
 
   if (imagePartBase64) {
-    messages[1].content.push({
+    messages[0].content.push({
       type: "image_url",
       image_url: { url: imagePartBase64 }
     });
@@ -125,12 +128,21 @@ const callOpenAICompatible = async (provider, textPrompt, imagePartBase64) => {
   const response = await axios.post(url, {
     model: model,
     messages: messages,
-    response_format: { type: "json_object" },
     temperature: 0.4
   }, { headers, timeout: 30000 });
 
   let responseText = response.data.choices[0].message.content;
-  responseText = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
+  
+  // THE FIX: The Bulletproof JSON Hunter
+  // Find the first '{' and the last '}' to extract ONLY the pure JSON object, 
+  // ignoring any conversational garbage like "User Safety: safe"
+  const jsonStart = responseText.indexOf('{');
+  const jsonEnd = responseText.lastIndexOf('}');
+  
+  if (jsonStart !== -1 && jsonEnd !== -1) {
+    responseText = responseText.substring(jsonStart, jsonEnd + 1);
+  }
+
   return JSON.parse(responseText);
 };
 
