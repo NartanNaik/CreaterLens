@@ -15,31 +15,8 @@ const app = express();
 // Required for express-rate-limit to accurately identify IPs behind proxies (like Vercel, Render, or Heroku)
 app.set("trust proxy", 1);
 
-const allowedOrigins = [
-  process.env.CLIENT_URL,
-  "https://pink-data.vercel.app", 
-  "http://localhost:5173"
-].filter(Boolean);
-
-// 1. Extract your exact CORS configuration into a reusable variable
-const corsOptions = {
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps, curl, or Postman)
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error("Not allowed by CORS"));
-    }
-  },
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"]
-};
-
-// 2. Apply it to standard requests
-app.use(cors(corsOptions));
+// 1. Wide-open CORS configuration. This allows ALL apps (Flutter, React, Postman) to connect without being blocked.
+app.use(cors());
 
 app.use(express.json());
 
@@ -59,6 +36,7 @@ app.use("/api/attributes", attributeRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/staging", stagingRoutes);
 
+// Fallback for 404 Route Not Found
 app.use((req, res) => {
   res.status(404).json({
     success: false,

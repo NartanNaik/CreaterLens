@@ -1,0 +1,1596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Normalization: Two Meanings, One Interview</title>
+<style>
+  :root{
+    --ink:#1b2430;
+    --paper:#eef1ef;
+    --panel:#ffffff;
+    --rule:#c7d0cb;
+    --db-accent:#2f6f4f;
+    --db-accent-soft:#dbe9e0;
+    --data-accent:#3a5a8c;
+    --data-accent-soft:#dde5f2;
+    --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --sans: "Inter", "Helvetica Neue", Arial, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--sans);
+    line-height:1.55;
+  }
+  .wrap{
+    max-width:920px;
+    margin:0 auto;
+    padding:64px 28px 100px;
+  }
+  header.hero{
+    margin-bottom:56px;
+  }
+  .kicker{
+    font-family:var(--mono);
+    font-size:13px;
+    color:#5a6b62;
+    letter-spacing:0.02em;
+    margin-bottom:10px;
+  }
+  h1{
+    font-family:var(--serif);
+    font-size:clamp(34px,5.5vw,52px);
+    line-height:1.08;
+    margin:0 0 18px;
+    font-weight:600;
+    letter-spacing:-0.01em;
+  }
+  .lede{
+    font-size:18px;
+    max-width:62ch;
+    color:#3a4650;
+    margin:0;
+  }
+  .lede strong{color:var(--ink);}
+
+  /* Fork diagram */
+  .fork{
+    display:flex;
+    gap:20px;
+    margin:44px 0 8px;
+    position:relative;
+  }
+  .fork::before{
+    content:"";
+    position:absolute;
+    top:-24px;
+    left:50%;
+    width:1px;
+    height:24px;
+    background:var(--rule);
+  }
+  .fork-branch{
+    flex:1;
+    border-radius:2px;
+    padding:26px 24px;
+    border:1px solid var(--rule);
+    background:var(--panel);
+  }
+  .fork-branch.db{border-top:4px solid var(--db-accent);}
+  .fork-branch.data{border-top:4px solid var(--data-accent);}
+  .branch-label{
+    font-family:var(--mono);
+    font-size:12px;
+    text-transform:none;
+    letter-spacing:0.02em;
+    margin-bottom:10px;
+    display:inline-block;
+    padding:3px 9px;
+    border-radius:20px;
+  }
+  .db .branch-label{background:var(--db-accent-soft); color:var(--db-accent);}
+  .data .branch-label{background:var(--data-accent-soft); color:var(--data-accent);}
+  .fork-branch h3{
+    font-family:var(--serif);
+    font-size:22px;
+    margin:0 0 10px;
+    font-weight:600;
+  }
+  .fork-branch p{
+    margin:0;
+    font-size:15px;
+    color:#3a4650;
+  }
+
+  section{
+    margin-top:64px;
+  }
+  .section-head{
+    display:flex;
+    align-items:baseline;
+    gap:14px;
+    margin-bottom:22px;
+    border-bottom:1px solid var(--rule);
+    padding-bottom:12px;
+  }
+  .section-head h2{
+    font-family:var(--serif);
+    font-size:26px;
+    margin:0;
+    font-weight:600;
+  }
+  .section-head .tag{
+    font-family:var(--mono);
+    font-size:12px;
+    color:#5a6b62;
+  }
+
+  /* Data normalization example */
+  .example-row{
+    display:grid;
+    grid-template-columns:1fr auto 1fr;
+    align-items:center;
+    gap:16px;
+    background:var(--panel);
+    border:1px solid var(--rule);
+    padding:18px 20px;
+    border-radius:2px;
+    margin-bottom:14px;
+  }
+  .example-row .before, .example-row .after{
+    font-family:var(--mono);
+    font-size:13.5px;
+    word-break:break-all;
+  }
+  .example-row .before{color:#8a4a3a; text-decoration:line-through; text-decoration-color:#c99; opacity:0.85;}
+  .example-row .after{color:var(--data-accent); font-weight:600;}
+  .example-row .arrow{color:#9aa6ab; font-size:16px;}
+
+  /* Normal forms */
+  .nf-stack{
+    display:flex;
+    flex-direction:column;
+    gap:0;
+  }
+  .nf-card{
+    display:grid;
+    grid-template-columns:76px 1fr;
+    gap:24px;
+    padding:28px 0;
+    border-bottom:1px solid var(--rule);
+  }
+  .nf-card:last-child{border-bottom:none;}
+  .nf-badge{
+    font-family:var(--serif);
+    font-size:34px;
+    font-weight:600;
+    color:var(--db-accent);
+    line-height:1;
+    padding-top:2px;
+  }
+  .nf-card h3{
+    font-family:var(--sans);
+    font-size:17px;
+    font-weight:700;
+    margin:0 0 4px;
+  }
+  .nf-rule{
+    font-family:var(--serif);
+    font-style:italic;
+    color:#5a6b62;
+    font-size:15px;
+    margin:0 0 14px;
+  }
+  .nf-card .explain{
+    font-size:15px;
+    color:#3a4650;
+    margin:0 0 14px;
+    max-width:64ch;
+  }
+  .swatch{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:12px;
+  }
+  .swatch .cell{
+    padding:12px 14px;
+    border-radius:2px;
+    font-size:13.5px;
+  }
+  .swatch .bad{
+    background:#f7e9e5;
+    border-left:3px solid #b5573f;
+    color:#6b3323;
+  }
+  .swatch .good{
+    background:var(--db-accent-soft);
+    border-left:3px solid var(--db-accent);
+    color:#1f4632;
+  }
+  .swatch .label{
+    font-family:var(--mono);
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:0.04em;
+    opacity:0.75;
+    display:block;
+    margin-bottom:5px;
+  }
+
+  /* Answer boxes */
+  .script{
+    background:#20291f;
+    color:#e7ece5;
+    padding:28px 30px;
+    border-radius:3px;
+    font-family:var(--serif);
+    font-size:16.5px;
+    line-height:1.7;
+    position:relative;
+  }
+  .script::before{
+    content:"“";
+    font-family:var(--serif);
+    font-size:60px;
+    position:absolute;
+    top:-6px;
+    left:18px;
+    color:#4a5a44;
+    line-height:1;
+  }
+  .script p{margin:0 0 14px; padding-left:6px;}
+  .script p:last-child{margin-bottom:0;}
+  .script .accent{color:#a9c9a0;}
+
+  .summary-line{
+    font-family:var(--serif);
+    font-size:16.5px;
+    line-height:1.75;
+    background:var(--panel);
+    border:1px solid var(--rule);
+    padding:24px 26px;
+    border-radius:2px;
+  }
+  .summary-line b{
+    color:var(--db-accent);
+    font-weight:700;
+  }
+
+  footer{
+    margin-top:70px;
+    padding-top:20px;
+    border-top:1px solid var(--rule);
+    font-family:var(--mono);
+    font-size:12px;
+    color:#8a958f;
+  }
+
+  /* Regex divider between the two topics */
+  .topic-divider{
+    margin-top:90px;
+    padding-top:26px;
+    border-top:3px solid var(--ink);
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    gap:20px;
+  }
+  .topic-divider .kicker{margin-bottom:6px;}
+  .topic-divider h1{font-size:clamp(30px,4.8vw,44px); margin:0 0 14px;}
+
+  :root{
+    --regex-accent:#a8501f;
+    --regex-accent-soft:#f3e2d5;
+  }
+
+  /* URL anatomy breakdown */
+  .url-line{
+    font-family:var(--mono);
+    font-size:15px;
+    background:#20291f;
+    color:#e7ece5;
+    padding:20px 22px;
+    border-radius:3px;
+    overflow-x:auto;
+    white-space:nowrap;
+    margin-bottom:22px;
+  }
+  .url-line .garbage{color:#8a958f; text-decoration:line-through; text-decoration-color:#5a6355;}
+  .url-line .base{color:#a9c9a0;}
+  .url-line .short{color:#e8c07d; font-weight:700;}
+
+  .anatomy-grid{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:14px;
+  }
+  .anatomy-card{
+    background:var(--panel);
+    border:1px solid var(--rule);
+    border-top:4px solid var(--regex-accent);
+    padding:18px 18px;
+    border-radius:2px;
+  }
+  .anatomy-card .term{
+    font-family:var(--sans);
+    font-weight:700;
+    font-size:14px;
+    margin-bottom:6px;
+  }
+  .anatomy-card .val{
+    font-family:var(--mono);
+    font-size:12.5px;
+    color:var(--regex-accent);
+    word-break:break-all;
+    margin-bottom:8px;
+    display:block;
+  }
+  .anatomy-card .desc{
+    font-size:13.5px;
+    color:#3a4650;
+    margin:0;
+  }
+
+  /* Regex pattern breakdown */
+  .pattern-box{
+    font-family:var(--mono);
+    font-size:16px;
+    background:var(--panel);
+    border:1px solid var(--rule);
+    padding:20px 22px;
+    border-radius:2px;
+    margin-bottom:22px;
+    letter-spacing:0.01em;
+    overflow-x:auto;
+    white-space:nowrap;
+  }
+  .pattern-box .lit{color:#3a4650;}
+  .pattern-box .grp{color:var(--regex-accent); font-weight:700;}
+  .pattern-box .noncap{color:var(--data-accent); font-weight:700;}
+
+  .piece-list{
+    display:flex;
+    flex-direction:column;
+    gap:0;
+  }
+  .piece{
+    display:grid;
+    grid-template-columns:190px 1fr;
+    gap:20px;
+    padding:18px 0;
+    border-bottom:1px solid var(--rule);
+  }
+  .piece:last-child{border-bottom:none;}
+  .piece code{
+    font-family:var(--mono);
+    font-size:14px;
+    color:var(--regex-accent);
+    background:var(--regex-accent-soft);
+    padding:4px 8px;
+    border-radius:3px;
+    align-self:start;
+    display:inline-block;
+  }
+  .piece p{
+    margin:0;
+    font-size:14.5px;
+    color:#3a4650;
+  }
+
+  /* Why-rebuild comparison */
+  .rebuild-compare{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:16px;
+    margin-bottom:26px;
+  }
+  .rebuild-col{
+    background:var(--panel);
+    border:1px solid var(--rule);
+    padding:20px;
+    border-radius:2px;
+  }
+  .rebuild-col h4{
+    font-family:var(--sans);
+    font-size:13px;
+    text-transform:none;
+    margin:0 0 12px;
+    color:#5a6b62;
+  }
+  .rebuild-col .variant{
+    font-family:var(--mono);
+    font-size:13px;
+    padding:8px 10px;
+    border-radius:2px;
+    margin-bottom:8px;
+  }
+  .rebuild-col.bad .variant{background:#f7e9e5; color:#6b3323;}
+  .rebuild-col.good .variant{background:var(--db-accent-soft); color:#1f4632;}
+
+  /* match array */
+  .match-array{
+    display:grid;
+    grid-template-columns:auto 1fr;
+    gap:14px 18px;
+    background:#20291f;
+    color:#e7ece5;
+    padding:24px 26px;
+    border-radius:3px;
+    font-family:var(--mono);
+    font-size:14px;
+    align-items:baseline;
+  }
+  .match-array .key{color:#e8c07d; font-weight:700;}
+  .match-array .value{color:#a9c9a0;}
+  .match-array .note{
+    grid-column:1 / -1;
+    font-family:var(--sans);
+    color:#b7bfb5;
+    font-size:13px;
+    margin-top:-4px;
+  }
+
+  @media (max-width:640px){
+    .anatomy-grid{grid-template-columns:1fr;}
+    .piece{grid-template-columns:1fr; gap:6px;}
+    .rebuild-compare{grid-template-columns:1fr;}
+    .topic-divider{flex-direction:column;}
+  }
+
+  :root{
+    --hop-accent:#7a4a9c;
+    --hop-accent-soft:#eae0f2;
+  }
+
+  /* Hop pipeline */
+  .hop-pipeline{
+    display:flex;
+    flex-direction:column;
+    gap:0;
+  }
+  .hop{
+    display:grid;
+    grid-template-columns:56px 1fr;
+    gap:22px;
+    padding:26px 0;
+    border-bottom:1px solid var(--rule);
+    position:relative;
+  }
+  .hop:last-child{border-bottom:none;}
+  .hop-num{
+    font-family:var(--serif);
+    font-size:15px;
+    font-weight:700;
+    color:var(--hop-accent);
+    background:var(--hop-accent-soft);
+    width:40px;
+    height:40px;
+    border-radius:50%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .hop:not(:last-child)::after{
+    content:"";
+    position:absolute;
+    left:27px;
+    top:66px;
+    width:1px;
+    height:calc(100% - 40px);
+    background:var(--rule);
+  }
+  .hop h3{
+    font-family:var(--sans);
+    font-size:17px;
+    font-weight:700;
+    margin:0 0 4px;
+  }
+  .hop .plain{
+    font-family:var(--serif);
+    font-style:italic;
+    color:#5a6b62;
+    font-size:14.5px;
+    margin:0 0 12px;
+  }
+  .hop p.explain{
+    font-size:14.5px;
+    color:#3a4650;
+    margin:0 0 12px;
+    max-width:66ch;
+  }
+  .hop .code-line{
+    font-family:var(--mono);
+    font-size:13px;
+    background:#20291f;
+    color:#a9c9a0;
+    padding:10px 14px;
+    border-radius:3px;
+    display:inline-block;
+  }
+
+  /* ID comparison */
+  .id-compare{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:16px;
+    margin-bottom:20px;
+  }
+  .id-col{
+    background:var(--panel);
+    border:1px solid var(--rule);
+    padding:20px;
+    border-radius:2px;
+  }
+  .id-col h4{
+    font-family:var(--sans);
+    font-size:14px;
+    margin:0 0 10px;
+  }
+  .id-col .id-val{
+    font-family:var(--mono);
+    font-size:13px;
+    padding:8px 10px;
+    border-radius:2px;
+    margin-bottom:10px;
+    display:inline-block;
+  }
+  .id-col.gib .id-val{background:#f7e9e5; color:#6b3323;}
+  .id-col.nat .id-val{background:var(--db-accent-soft); color:#1f4632;}
+  .id-col p{margin:0; font-size:13.5px; color:#3a4650;}
+
+  /* Flow / decision */
+  .flow-decision{
+    background:var(--panel);
+    border:1px solid var(--rule);
+    border-radius:2px;
+    padding:24px 26px;
+    margin-bottom:20px;
+  }
+  .flow-step{
+    display:flex;
+    gap:14px;
+    align-items:flex-start;
+    padding:10px 0;
+  }
+  .flow-step .dot{
+    width:8px;height:8px;
+    border-radius:50%;
+    background:var(--hop-accent);
+    margin-top:7px;
+    flex-shrink:0;
+  }
+  .flow-step.safe .dot{background:var(--db-accent);}
+  .flow-step p{margin:0; font-size:14.5px; color:#3a4650;}
+  .flow-step strong{color:var(--ink);}
+
+  :root{
+    --queue-accent:#1f6f78;
+    --queue-accent-soft:#dcedee;
+  }
+
+  /* Bounded vs unbounded query */
+  .query-compare{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:16px;
+    margin-bottom:22px;
+  }
+  .query-col{
+    background:var(--panel);
+    border:1px solid var(--rule);
+    padding:20px;
+    border-radius:2px;
+    border-top:4px solid var(--rule);
+  }
+  .query-col.bad{border-top-color:#b5573f;}
+  .query-col.good{border-top-color:var(--queue-accent);}
+  .query-col h4{
+    font-family:var(--sans);
+    font-size:14px;
+    margin:0 0 10px;
+  }
+  .query-col .count{
+    font-family:var(--serif);
+    font-size:30px;
+    font-weight:600;
+    margin-bottom:6px;
+  }
+  .query-col.bad .count{color:#b5573f;}
+  .query-col.good .count{color:var(--queue-accent);}
+  .query-col p{margin:0; font-size:13.5px; color:#3a4650;}
+
+  .code-block{
+    font-family:var(--mono);
+    font-size:13.5px;
+    background:#20291f;
+    color:#e7ece5;
+    padding:20px 22px;
+    border-radius:3px;
+    line-height:1.7;
+    overflow-x:auto;
+    margin-bottom:20px;
+  }
+  .code-block .kw{color:#e8c07d;}
+  .code-block .str{color:#a9c9a0;}
+  .code-block .fn{color:#8ab4d8;}
+  .code-block .cmt{color:#7a8577; font-style:italic;}
+  .code-block .limit-hl{
+    background:rgba(232,192,125,0.18);
+    padding:1px 3px;
+    border-radius:2px;
+  }
+
+  /* Queue lock timeline */
+  .lock-timeline{
+    display:flex;
+    align-items:stretch;
+    gap:2px;
+    margin-bottom:18px;
+    overflow-x:auto;
+  }
+  .lock-item{
+    flex:1;
+    min-width:110px;
+    padding:16px 14px;
+    background:var(--panel);
+    border:1px solid var(--rule);
+    text-align:center;
+    position:relative;
+  }
+  .lock-item.active{
+    background:var(--queue-accent-soft);
+    border-color:var(--queue-accent);
+  }
+  .lock-item.cooldown{
+    background:#fbf3e3;
+    border-color:#d8a94a;
+  }
+  .lock-item .n{
+    font-family:var(--serif);
+    font-size:20px;
+    font-weight:600;
+    display:block;
+    margin-bottom:4px;
+  }
+  .lock-item .lbl{
+    font-family:var(--mono);
+    font-size:10.5px;
+    color:#5a6b62;
+    text-transform:none;
+  }
+  .lock-item::after{
+    content:"→";
+    position:absolute;
+    right:-14px;
+    top:50%;
+    transform:translateY(-50%);
+    color:#9aa6ab;
+    font-size:14px;
+    z-index:1;
+  }
+  .lock-item:last-child::after{display:none;}
+
+  :root{
+    --scrape-accent:#a03d5c;
+    --scrape-accent-soft:#f3e0e7;
+  }
+
+  /* Tag mining cards */
+  .tag-mine-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:14px;
+    margin-bottom:20px;
+  }
+  .tag-mine-card{
+    background:var(--panel);
+    border:1px solid var(--rule);
+    border-top:4px solid var(--scrape-accent);
+    padding:18px;
+    border-radius:2px;
+  }
+  .tag-mine-card .sel{
+    font-family:var(--mono);
+    font-size:12.5px;
+    color:var(--scrape-accent);
+    background:var(--scrape-accent-soft);
+    padding:4px 8px;
+    border-radius:3px;
+    display:inline-block;
+    margin-bottom:10px;
+  }
+  .tag-mine-card p{
+    margin:0;
+    font-size:13.5px;
+    color:#3a4650;
+  }
+
+  /* Step-through numbered list for the how-it-works */
+  .step-through{
+    display:flex;
+    flex-direction:column;
+    gap:0;
+  }
+  .step-through .st{
+    display:grid;
+    grid-template-columns:30px 1fr;
+    gap:16px;
+    padding:16px 0;
+    border-bottom:1px solid var(--rule);
+  }
+  .step-through .st:last-child{border-bottom:none;}
+  .step-through .st .idx{
+    font-family:var(--serif);
+    font-weight:700;
+    color:var(--scrape-accent);
+    font-size:16px;
+  }
+  .step-through .st h4{
+    font-family:var(--sans);
+    font-size:14.5px;
+    margin:0 0 4px;
+    font-weight:700;
+  }
+  .step-through .st p{
+    margin:0;
+    font-size:14px;
+    color:#3a4650;
+  }
+
+  .code-block .com2{color:#7a8577;}
+  .code-block .prop{color:#e8c07d;}
+
+  :root{
+    --ai-accent:#2a5d8f;
+    --ai-accent-soft:#dfe8f2;
+  }
+
+  /* Provider cascade */
+  .cascade{
+    display:flex;
+    flex-direction:column;
+    gap:0;
+    margin-bottom:20px;
+  }
+  .cascade-item{
+    display:grid;
+    grid-template-columns:34px 1fr auto;
+    align-items:center;
+    gap:16px;
+    padding:16px 18px;
+    background:var(--panel);
+    border:1px solid var(--rule);
+    border-radius:2px;
+    margin-bottom:8px;
+    position:relative;
+  }
+  .cascade-item .cnum{
+    font-family:var(--serif);
+    font-weight:700;
+    font-size:16px;
+    color:var(--ai-accent);
+  }
+  .cascade-item .cname{
+    font-family:var(--sans);
+    font-weight:700;
+    font-size:14.5px;
+  }
+  .cascade-item .cendpoint{
+    font-family:var(--mono);
+    font-size:12px;
+    color:#5a6b62;
+    display:block;
+    margin-top:2px;
+  }
+  .cascade-item .cfail{
+    font-family:var(--mono);
+    font-size:11.5px;
+    color:#a05a3a;
+    background:#f7e9e5;
+    padding:4px 9px;
+    border-radius:20px;
+    white-space:nowrap;
+  }
+  .cascade-item.final .cfail{
+    color:var(--db-accent);
+    background:var(--db-accent-soft);
+  }
+  .cascade-arrow{
+    text-align:center;
+    color:#9aa6ab;
+    font-size:14px;
+    margin:-2px 0 6px;
+    font-family:var(--mono);
+  }
+
+  /* Demographic gate branches */
+  .gate-branches{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:16px;
+    margin-bottom:20px;
+  }
+  .gate-branch{
+    padding:20px;
+    border-radius:2px;
+    border:1px solid var(--rule);
+  }
+  .gate-branch.rej{background:#f7e9e5; border-color:#d9b3a5;}
+  .gate-branch.acc{background:var(--db-accent-soft); border-color:#a8cbb5;}
+  .gate-branch h4{
+    font-family:var(--sans);
+    font-size:14px;
+    margin:0 0 8px;
+  }
+  .gate-branch .status{
+    font-family:var(--mono);
+    font-size:12.5px;
+    padding:3px 9px;
+    border-radius:20px;
+    display:inline-block;
+    margin-bottom:10px;
+  }
+  .gate-branch.rej .status{background:#e5c4b5; color:#7a3a20;}
+  .gate-branch.acc .status{background:#c3ddc9; color:#1f4632;}
+  .gate-branch p{margin:0; font-size:13.5px; color:#3a4650;}
+
+  /* Byte transformation chain */
+  .byte-chain{
+    display:flex;
+    flex-direction:column;
+    gap:0;
+  }
+  .byte-step{
+    display:grid;
+    grid-template-columns:130px 1fr;
+    gap:20px;
+    padding:20px 0;
+    border-bottom:1px solid var(--rule);
+    align-items:start;
+  }
+  .byte-step:last-child{border-bottom:none;}
+  .byte-step .stage{
+    font-family:var(--mono);
+    font-size:12px;
+    color:var(--ai-accent);
+    background:var(--ai-accent-soft);
+    padding:5px 10px;
+    border-radius:3px;
+    display:inline-block;
+    text-align:center;
+  }
+  .byte-step .sample{
+    font-family:var(--mono);
+    font-size:12px;
+    color:#5a6b62;
+    display:block;
+    margin:6px 0 8px;
+    word-break:break-all;
+  }
+  .byte-step p{margin:0; font-size:14px; color:#3a4650;}
+
+  .code-block .cline{
+    display:block;
+  }
+  .code-block .lnum{
+    color:#5a6355;
+    display:inline-block;
+    width:52px;
+  }
+
+  @media (max-width:640px){
+    .fork{flex-direction:column;}
+    .nf-card{grid-template-columns:1fr; gap:6px;}
+    .nf-badge{font-size:26px;}
+    .example-row{grid-template-columns:1fr; text-align:left;}
+    .example-row .arrow{display:none;}
+    .swatch{grid-template-columns:1fr;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <div class="kicker">interview prep · database fundamentals</div>
+    <h1>Normalization means two<br>different things.</h1>
+    <p class="lede">Same word, two technical concepts. Say the wrong one in an interview and <strong>it's marked incorrect</strong> — even though you understand the idea perfectly well.</p>
+  </header>
+
+  <div class="fork">
+    <div class="fork-branch db">
+      <span class="branch-label">DBMS normalization</span>
+      <h3>Table structure</h3>
+      <p>Organizing tables and columns to remove duplicate data and protect data integrity. Splits one messy table into smaller, related tables linked by foreign keys.</p>
+    </div>
+    <div class="fork-branch data">
+      <span class="branch-label">Data normalization</span>
+      <h3>Value formatting</h3>
+      <p>Transforming messy, inconsistent input into one clean, standard format — so equal things look equal, and your code can compare or de-duplicate them.</p>
+    </div>
+  </div>
+
+  <section>
+    <div class="section-head">
+      <h2>Data normalization, in practice</h2>
+      <span class="tag">what you actually did</span>
+    </div>
+    <div class="example-row">
+      <span class="before">instagram.com/p/xyz?igsh=abc123</span>
+      <span class="arrow">→</span>
+      <span class="after">instagram.com/p/xyz</span>
+    </div>
+    <div class="example-row">
+      <span class="before">Jane.Doe@Email.com</span>
+      <span class="arrow">→</span>
+      <span class="after">jane.doe@email.com</span>
+    </div>
+    <div class="example-row">
+      <span class="before">"  Jane Doe  "</span>
+      <span class="arrow">→</span>
+      <span class="after">"Jane Doe"</span>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>DBMS normalization: the normal forms</h2>
+      <span class="tag">levels of strictness, not a table count</span>
+    </div>
+    <div class="nf-stack">
+
+      <div class="nf-card">
+        <div class="nf-badge">1NF</div>
+        <div>
+          <h3>First Normal Form — the single-value rule</h3>
+          <p class="nf-rule">Every cell holds exactly one piece of data. Atomicity.</p>
+          <p class="explain">A "Skills" column can't hold a list like <em>React, Node, Firebase</em>. Break it into separate rows or a separate table so each cell holds one value.</p>
+          <div class="swatch">
+            <div class="cell bad"><span class="label">not 1NF</span>Skills: React, Node, Firebase</div>
+            <div class="cell good"><span class="label">1NF</span>one skill per row</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="nf-card">
+        <div class="nf-badge">2NF</div>
+        <div>
+          <h3>Second Normal Form — the whole-key rule</h3>
+          <p class="nf-rule">Passes 1NF, and every column depends on the entire primary key — no partial dependencies.</p>
+          <p class="explain">If the primary key is <code>StudentID + CourseID</code>, a <code>StudentName</code> column only depends on <code>StudentID</code>. That's a partial dependency — move it into its own <code>Students</code> table.</p>
+          <div class="swatch">
+            <div class="cell bad"><span class="label">violation</span>StudentName depends on half the key</div>
+            <div class="cell good"><span class="label">fix</span>StudentName moves to Students table</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="nf-card">
+        <div class="nf-badge">3NF</div>
+        <div>
+          <h3>Third Normal Form — the no-middleman rule</h3>
+          <p class="nf-rule">Passes 2NF, and no non-key column depends on another non-key column — no transitive dependencies.</p>
+          <p class="explain"><code>DepartmentLocation</code> depends on <code>DepartmentName</code>, not on <code>EmployeeID</code>. Split it into a separate <code>Departments</code> table.</p>
+          <div class="swatch">
+            <div class="cell bad"><span class="label">violation</span>DeptLocation depends on DeptName</div>
+            <div class="cell good"><span class="label">fix</span>Departments table holds Name + Location</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>What to say, out loud</h2>
+      <span class="tag">the interview answer</span>
+    </div>
+    <div class="script">
+      <p>"In the context of this specific code, I am referring to <span class="accent">Data Normalization</span> — stripping the tracking parameters off the Instagram URLs so they are standardized and my database can catch duplicates.</p>
+      <p>However, if you are asking about <span class="accent">DBMS Normalization</span>, that is different — that is the process of structuring relational tables to eliminate data redundancy, using normal forms like 1NF, 2NF, and 3NF."</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>The one-breath version</h2>
+      <span class="tag">memorize this</span>
+    </div>
+    <p class="summary-line">Normalization is a set of rules to reduce data redundancy. <b>1NF</b> ensures every cell has atomic, single values. <b>2NF</b> ensures all columns depend on the entire primary key, removing partial dependencies. <b>3NF</b> ensures non-key columns don't depend on other non-key columns, removing transitive dependencies.</p>
+  </section>
+
+  <div class="topic-divider">
+    <div>
+      <div class="kicker">interview prep · text extraction</div>
+      <h1>Regex extraction & canonical shortcodes</h1>
+      <p class="lede">The tool your Data Normalization actually runs on. Regex finds a pattern in messy text; the shortcode is the one fragment worth keeping.</p>
+    </div>
+  </div>
+
+  <section>
+    <div class="section-head">
+      <h2>The anatomy of a raw link</h2>
+      <span class="tag">what comes in vs. what matters</span>
+    </div>
+    <div class="url-line">https://www.instagram.com/reel/<span class="short">DZ-CmsTJPBC</span>/<span class="garbage">?stkn=NTc4MTIwNjQ2YQ==</span></div>
+    <div class="anatomy-grid">
+      <div class="anatomy-card">
+        <div class="term">Base path</div>
+        <span class="val">instagram.com/reel/</span>
+        <p class="desc">The fixed, hardcoded prefix. Same for every reel, regardless of who shared it.</p>
+      </div>
+      <div class="anatomy-card">
+        <div class="term">Shortcode</div>
+        <span class="val">DZ-CmsTJPBC</span>
+        <p class="desc">The unique identifier for this one video. The only variable part worth extracting.</p>
+      </div>
+      <div class="anatomy-card">
+        <div class="term">Canonical URL</div>
+        <span class="val">.../reel/DZ-CmsTJPBC/</span>
+        <p class="desc">Base path + shortcode, rebuilt from scratch. The official version saved to the DB.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>Reading the pattern</h2>
+      <span class="tag">what each piece of the regex does</span>
+    </div>
+    <div class="pattern-box"><span class="lit">instagram\.com\/</span><span class="noncap">(?:reel|p)</span><span class="lit">\/</span><span class="grp">([A-Za-z0-9_-]+)</span></div>
+    <div class="piece-list">
+      <div class="piece">
+        <code>instagram\.com\/</code>
+        <p>The landmark. Tells the engine "ignore everything until you see this exact text" — without it, Regex would grab the first letters it finds, which is <code>https</code>.</p>
+      </div>
+      <div class="piece">
+        <code>(?:reel|p)</code>
+        <p>Matches either word, but the <code>?:</code> makes it a <strong>non-capturing group</strong> — it's a signpost to walk past, not something to save. Covers both reel and post URL styles.</p>
+      </div>
+      <div class="piece">
+        <code>([A-Za-z0-9_-]+)</code>
+        <p>The extraction trap. Parentheses create a <strong>capture group</strong> — whatever matches inside gets saved. The character class accepts letters, digits, underscores, and dashes; <code>+</code> keeps grabbing until it hits a slash or <code>?</code>.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>What match() actually returns</h2>
+      <span class="tag">where the shortcode lives in memory</span>
+    </div>
+    <div class="match-array">
+      <span class="key">match[0]</span>
+      <span class="value">"instagram.com/reel/DZ-CmsTJPBC"</span>
+      <span class="note">the full match — everything the pattern touched</span>
+      <span class="key">match[1]</span>
+      <span class="value">"DZ-CmsTJPBC"</span>
+      <span class="note">the capture group — only what was inside the ( )</span>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>Why rebuild instead of extracting the whole URL</h2>
+      <span class="tag">the same video, three different strings</span>
+    </div>
+    <p class="lede" style="margin-bottom:20px;">Users paste links from browsers, apps, and tablets — the prefix is never guaranteed to match.</p>
+    <div class="rebuild-compare">
+      <div class="rebuild-col bad">
+        <h4>Extract the whole URL → inconsistent</h4>
+        <div class="variant">http://instagram.com/p/DZ-CmsTJPBC</div>
+        <div class="variant">www.instagram.com/reel/DZ-CmsTJPBC</div>
+        <div class="variant">https://www.instagram.com/reel/DZ-CmsTJPBC</div>
+      </div>
+      <div class="rebuild-col good">
+        <h4>Extract shortcode, rebuild → identical</h4>
+        <div class="variant">https://www.instagram.com/reel/DZ-CmsTJPBC/</div>
+        <div class="variant">https://www.instagram.com/reel/DZ-CmsTJPBC/</div>
+        <div class="variant">https://www.instagram.com/reel/DZ-CmsTJPBC/</div>
+      </div>
+    </div>
+    <p class="summary-line">Three visually different links, same video — but only one is treated as canonical. Extracting <b>only</b> the shortcode and hardcoding the rest guarantees every entry in the database has the exact same shape, so duplicates get caught every time.</p>
+  </section>
+
+  <div class="topic-divider">
+    <div>
+      <div class="kicker">interview prep · backend pipeline</div>
+      <h1>Ingestion & the de-dupe gate</h1>
+      <p class="lede">Jargon-heavy on paper. In plain English it's three moves: <strong>send, check, save</strong> — with a bouncer standing at the door.</p>
+    </div>
+  </div>
+
+  <section>
+    <div class="section-head">
+      <h2>The three hops</h2>
+      <span class="tag">send → check → save</span>
+    </div>
+    <div class="hop-pipeline">
+
+      <div class="hop">
+        <div class="hop-num">2.1</div>
+        <div>
+          <h3>Ingestion dispatch — the send</h3>
+          <p class="plain">"Ingestion" just means a system taking in new data.</p>
+          <p class="explain">The Flutter app takes the clean URL and throws it over the fence to the Vercel backend with an HTTP request.</p>
+          <span class="code-line">HTTPS POST /api/staging/ingest</span>
+        </div>
+      </div>
+
+      <div class="hop">
+        <div class="hop-num">2.2</div>
+        <div>
+          <h3>Fast de-duplication gate — the bouncer</h3>
+          <p class="plain">Before doing any expensive work, ask: "do you already exist?"</p>
+          <p class="explain">The backend checks Firestore for a document literally named after the shortcode. If it's already there, the request gets turned away with an HTTP 409 — no AI calls, no wasted writes.</p>
+          <span class="code-line">GET doc(shortcode) → exists? → 409 Conflict</span>
+        </div>
+      </div>
+
+      <div class="hop">
+        <div class="hop-num">2.3</div>
+        <div>
+          <h3>Staging persistence — the save</h3>
+          <p class="plain">"Persistence" just means writing data to disk so it survives a restart.</p>
+          <p class="explain">Only if the gate confirms this is brand new does the backend write it, marked <code>pending</code> — the exact signal that tells the dashboard a fresh video is waiting to be scanned.</p>
+          <span class="code-line">setDoc({ url, status: "pending", createdAt })</span>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>Gibberish ID vs. natural ID</h2>
+      <span class="tag">what makes duplicates physically impossible</span>
+    </div>
+    <div class="id-compare">
+      <div class="id-col gib">
+        <h4>Gibberish ID (auto-generated)</h4>
+        <span class="id-val">7xKp9LqQwERT</span>
+        <p>Firestore's default. Fine for things like comments — but the same URL could get saved under ten different random IDs with nothing stopping it.</p>
+      </div>
+      <div class="id-col nat">
+        <h4>Natural ID (the shortcode)</h4>
+        <span class="id-val">DZ-CmsTJPBC</span>
+        <p>An identifier that already exists in the real world. Forcing the document's name to be the shortcode means Firestore literally cannot hold two copies of the same video.</p>
+      </div>
+    </div>
+    <p class="summary-line">A natural ID doesn't just help you find duplicates faster — it makes the database structure itself <b>prevent</b> them from existing.</p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>Where the regex actually runs</h2>
+      <span class="tag">never trust the client</span>
+    </div>
+    <div class="flow-decision">
+      <div class="flow-step">
+        <div class="dot"></div>
+        <p>The Flutter app may do a quick client-side cleanup first — nice for speed, but not something to rely on.</p>
+      </div>
+      <div class="flow-step safe">
+        <div class="dot"></div>
+        <p><strong>The real regex lives in the Vercel backend.</strong> If someone skips the app entirely and hits the API directly with a messy link, the backend still sanitizes it before it ever touches the database.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>What actually happens on a 409</h2>
+      <span class="tag">no crash, no silent delete</span>
+    </div>
+    <div class="flow-decision">
+      <div class="flow-step">
+        <div class="dot"></div>
+        <p>Backend checks Firestore: <code>DZ-CmsTJPBC</code> already exists.</p>
+      </div>
+      <div class="flow-step">
+        <div class="dot"></div>
+        <p>Backend stops immediately and sends back <strong>HTTP 409 Conflict</strong> — a polite refusal, not an error state.</p>
+      </div>
+      <div class="flow-step safe">
+        <div class="dot"></div>
+        <p>The original document already in the database is <strong>untouched</strong>. The incoming duplicate is discarded — never written at all.</p>
+      </div>
+      <div class="flow-step safe">
+        <div class="dot"></div>
+        <p>Flutter receives the 409 and shows a toast: <em>"This Reel is already in the system!"</em></p>
+      </div>
+    </div>
+    <p class="summary-line">The duplicate is <b>never saved</b>. The 409 is a shield that protects database quotas and keeps the data clean — it aborts the request, it doesn't crash the system or wipe anything.</p>
+  </section>
+
+  <div class="topic-divider">
+    <div>
+      <div class="kicker">interview prep · frontend queue management</div>
+      <h1>Dashboard ingestion & queue coordination</h1>
+      <p class="lede">Two rules that keep the dashboard cheap and the AI provider from banning you: <strong>fetch a small slice</strong>, and <strong>process one at a time</strong>.</p>
+    </div>
+  </div>
+
+  <section>
+    <div class="section-head">
+      <h2>Bounded vs. unbounded — the query itself</h2>
+      <span class="tag">"bounded" describes the query, not the data</span>
+    </div>
+    <div class="query-compare">
+      <div class="query-col bad">
+        <h4>Unbounded query</h4>
+        <div class="count">5,000 reads</div>
+        <p>"Get me all pending videos" with no limit. If 5,000 are waiting, Firestore pulls all 5,000 at once — burning that much of the daily quota in one call.</p>
+      </div>
+      <div class="query-col good">
+        <h4>Bounded query</h4>
+        <div class="count">20 reads</div>
+        <p>"Get me pending videos, but stop after 20." A strict ceiling on how much the query is allowed to pull down at once.</p>
+      </div>
+    </div>
+    <div class="code-block"><span class="cmt">// The limit(20) is the boundary!</span>
+<span class="kw">const</span> q = <span class="fn">query</span>(
+  <span class="fn">collection</span>(db, <span class="str">"staging"</span>), 
+  <span class="fn">where</span>(<span class="str">"status"</span>, <span class="str">"=="</span>, <span class="str">"pending"</span>), 
+  <span class="limit-hl"><span class="fn">limit</span>(20)</span>
+);</div>
+    <p class="summary-line">Why not <code>onSnapshot</code> instead? It's a live, real-time listener — cool, but every update triggers a new read. On Firebase's free Spark plan (<b>50,000 reads/day</b>), that can burn the whole quota in a few hours. A one-time bounded fetch is a manual "refresh" instead of an always-on connection — it costs a fraction as much and never crashes the app.</p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>The queue lock — single-file execution</h2>
+      <span class="tag">why "Scan All" doesn't fire 10 requests at once</span>
+    </div>
+    <p class="lede" style="margin-bottom:20px;">Firing several AI requests in the same millisecond gets you an HTTP 429 "Too Many Requests" ban. The fix is a lock that only lets one item run at a time.</p>
+    <div class="lock-timeline">
+      <div class="lock-item active"><span class="n">1</span><span class="lbl">processing</span></div>
+      <div class="lock-item cooldown"><span class="n">1</span><span class="lbl">6s cooldown</span></div>
+      <div class="lock-item"><span class="n">2</span><span class="lbl">processing</span></div>
+      <div class="lock-item"><span class="n">2</span><span class="lbl">6s cooldown</span></div>
+      <div class="lock-item"><span class="n">3</span><span class="lbl">processing</span></div>
+    </div>
+    <div class="flow-decision">
+      <div class="flow-step">
+        <div class="dot"></div>
+        <p><strong>isAutoProcessingRef</strong> — a React <code>useRef</code> acting as a flag. When item 1 starts, it flips to <code>true</code>, like a "register closed" sign.</p>
+      </div>
+      <div class="flow-step">
+        <div class="dot"></div>
+        <p><strong>Single-file execution</strong> — item N+1 cannot start until item N has finished every stage.</p>
+      </div>
+      <div class="flow-step safe">
+        <div class="dot"></div>
+        <p><strong>6-second cooldown</strong> — after each item finishes, a mandatory pause gives the AI API time to cool down before the next request.</p>
+      </div>
+    </div>
+    <p class="summary-line">Together, the bounded query and the queue lock say the same thing to an interviewer: <b>this system scales without breaking rate limits or running up a database bill.</b></p>
+  </section>
+
+  <div class="topic-divider">
+    <div>
+      <div class="kicker">interview prep · scraping relay</div>
+      <h1>Step 1: engagement scraping</h1>
+      <p class="lede">The information-gathering half of the pipeline, split off on its own so a slow scrape can't time out the whole request.</p>
+    </div>
+  </div>
+
+  <section>
+    <div class="section-head">
+      <h2>Three hops, one goal: gather the numbers</h2>
+      <span class="tag">command → grab → checkpoint</span>
+    </div>
+    <div class="hop-pipeline">
+
+      <div class="hop">
+        <div class="hop-num">4.1</div>
+        <div>
+          <h3>Scrape trigger — the command</h3>
+          <p class="plain">The dashboard tells the backend: wake up, do exactly one job.</p>
+          <p class="explain"><code>:id</code> is the shortcode, and <code>?step=scrape</code> tells the server "only do the scraping part — leave the AI analysis alone for now."</p>
+          <span class="code-line">POST /api/staging/DZ-CmsTJPBC/process?step=scrape</span>
+        </div>
+      </div>
+
+      <div class="hop">
+        <div class="hop-num">4.2</div>
+        <div>
+          <h3>Extraction & transformation — the data grab</h3>
+          <p class="plain">The backend reads the reel's raw HTML and pulls out the numbers that matter.</p>
+          <p class="explain">Username, follower count, view metrics, likes, and the thumbnail's CDN link — enough for the AI step to have something to look at next.</p>
+        </div>
+      </div>
+
+      <div class="hop">
+        <div class="hop-num">4.3</div>
+        <div>
+          <h3>Staging state update — the checkpoint</h3>
+          <p class="plain">Save progress so a crash never means starting over.</p>
+          <p class="explain">Status flips from <code>pending</code> to <code>scraping_done</code>. If the server dies right after, a restart sees that status and skips straight to AI analysis instead of re-scraping.</p>
+          <span class="code-line">status: "pending" → "scraping_done"</span>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>How the scrape actually works</h2>
+      <span class="tag">the real Node.js code</span>
+    </div>
+    <div class="code-block"><span class="kw">import</span> * <span class="kw">as</span> cheerio <span class="kw">from</span> <span class="str">'cheerio'</span>;
+
+<span class="kw">export async function</span> <span class="fn">scrapeInstagramReel</span>(canonicalUrl) {
+  <span class="cmt">// 1. Emulate a mobile browser so Instagram doesn't block the request</span>
+  <span class="kw">const</span> headers = {
+    <span class="prop">'User-Agent'</span>: <span class="str">'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X)...'</span>,
+    <span class="prop">'Accept'</span>: <span class="str">'text/html,application/xhtml+xml,...'</span>
+  };
+
+  <span class="cmt">// 2. Fetch the raw HTML string over HTTPS</span>
+  <span class="kw">const</span> response = <span class="kw">await</span> <span class="fn">fetch</span>(canonicalUrl, { headers });
+  <span class="kw">const</span> htmlText = <span class="kw">await</span> response.<span class="fn">text</span>();
+
+  <span class="cmt">// 3. Parse the HTML string into a queryable DOM tree</span>
+  <span class="kw">const</span> $ = cheerio.<span class="fn">load</span>(htmlText);
+
+  <span class="cmt">// 4. Pull the OpenGraph meta tags out of the &lt;head&gt;</span>
+  <span class="kw">const</span> thumbnailCdnUrl = $(<span class="str">'meta[property="og:image"]'</span>).<span class="fn">attr</span>(<span class="str">'content'</span>);
+  <span class="kw">const</span> description   = $(<span class="str">'meta[property="og:description"]'</span>).<span class="fn">attr</span>(<span class="str">'content'</span>);
+
+  <span class="cmt">// 5. Parse likes/comments/username out of the description text</span>
+  <span class="kw">const</span> metrics = <span class="fn">parseOgDescription</span>(description);
+
+  <span class="kw">return</span> { ...metrics, thumbnailCdnUrl };
+}</div>
+    <div class="step-through">
+      <div class="st">
+        <span class="idx">1</span>
+        <div><h4>User-agent bypass</h4><p>A bare <code>fetch</code> looks like a bot and gets a 403 or 429 instantly. Sending a realistic iPhone User-Agent string makes the request look like an ordinary mobile browser.</p></div>
+      </div>
+      <div class="st">
+        <span class="idx">2</span>
+        <div><h4>Raw HTML ingestion</h4><p>The server sends an HTTPS GET to the canonical URL and downloads the entire page — thousands of lines of raw HTML — as one text string.</p></div>
+      </div>
+      <div class="st">
+        <span class="idx">3</span>
+        <div><h4>DOM parsing with Cheerio</h4><p>Node.js can't read HTML like a browser does. Cheerio parses the raw string into a virtual DOM tree so the code can query it with CSS-style selectors — a server-side jQuery.</p></div>
+      </div>
+      <div class="st">
+        <span class="idx">4</span>
+        <div><h4>OpenGraph tag mining</h4><p>Every public post has OpenGraph <code>&lt;meta&gt;</code> tags baked into its HTML so link previews look good on WhatsApp or iMessage. Those same tags conveniently expose the thumbnail and engagement text.</p></div>
+      </div>
+      <div class="st">
+        <span class="idx">5</span>
+        <div><h4>String sanitization</h4><p>A helper regex strips commas and words out of the description text — turning <em>"15K likes, 120 comments - user on..."</em> into clean, structured numbers ready to save.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>What each meta tag hands over</h2>
+      <span class="tag">OpenGraph selectors, targeted directly</span>
+    </div>
+    <div class="tag-mine-grid">
+      <div class="tag-mine-card">
+        <span class="sel">meta[property="og:image"]</span>
+        <p>The direct CDN link to the video's cover thumbnail — the picture the AI step will look at.</p>
+      </div>
+      <div class="tag-mine-card">
+        <span class="sel">meta[property="og:description"]</span>
+        <p>A text blurb that happens to contain likes, comments, and the username in one string, ready to be regex-parsed.</p>
+      </div>
+    </div>
+    <p class="summary-line">Splitting scrape and analysis into separate hops, each saving its own checkpoint, is exactly how production systems survive crashes without losing work — say this line in an interview and it lands.</p>
+  </section>
+
+  <div class="topic-divider">
+    <div>
+      <div class="kicker">interview prep · multimodal AI relay</div>
+      <h1>Step 2: multimodal AI analysis</h1>
+      <p class="lede">Four hops: <strong>call the AI, survive it failing three times, force its messy reply into clean JSON, then decide.</strong></p>
+    </div>
+  </div>
+
+  <section>
+    <div class="section-head">
+      <h2>The four hops</h2>
+      <span class="tag">trigger → cascade → parse → gate</span>
+    </div>
+    <div class="hop-pipeline">
+
+      <div class="hop">
+        <div class="hop-num">5.1</div>
+        <div>
+          <h3>Analysis trigger — the command</h3>
+          <p class="plain">Same pattern as the scrape step, different query flag.</p>
+          <p class="explain"><code>?step=analyze</code> tells the server "the scraping is done, now run the AI on the thumbnail you already grabbed."</p>
+          <span class="code-line">POST /api/staging/DZ-CmsTJPBC/process?step=analyze</span>
+        </div>
+      </div>
+
+      <div class="hop">
+        <div class="hop-num">5.2</div>
+        <div>
+          <h3>Multi-provider cascade — the fallback fleet</h3>
+          <p class="plain">If one AI provider fails, quietly try the next. Never let the whole request die because of one vendor.</p>
+          <p class="explain">Each provider is wrapped in its own <code>try/catch</code>. A failure logs a warning and falls through to the next provider instead of throwing an error back to the user.</p>
+        </div>
+      </div>
+
+      <div class="hop">
+        <div class="hop-num">5.3</div>
+        <div>
+          <h3>Sanitization & parsing — the JSON hunter</h3>
+          <p class="plain">AI models are chatty. Strip their small talk and get to the actual data.</p>
+          <p class="explain">Finds the first <code>{</code> and the last <code>}</code> in the raw text, slices out everything else, and feeds only that clean substring into <code>JSON.parse()</code>.</p>
+        </div>
+      </div>
+
+      <div class="hop">
+        <div class="hop-num">5.4</div>
+        <div>
+          <h3>Demographic & brand gate — the decision</h3>
+          <p class="plain">Read one field from the parsed JSON and route the document accordingly.</p>
+          <p class="explain">Checks <code>accountType.value</code>. Not the target profile → <code>rejected</code>. Matches → <code>completed</code>, ready for production.</p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>The cascade in order</h2>
+      <span class="tag">each failure quietly falls to the next provider</span>
+    </div>
+    <div class="cascade">
+      <div class="cascade-item">
+        <span class="cnum">1</span>
+        <div><span class="cname">Gemini API</span><span class="cendpoint">generativelanguage.googleapis.com</span></div>
+        <span class="cfail">on 401 / 429 / quota → next</span>
+      </div>
+      <div class="cascade-arrow">↓ falls through</div>
+      <div class="cascade-item">
+        <span class="cnum">2</span>
+        <div><span class="cname">Groq Cloud</span><span class="cendpoint">api.groq.com</span></div>
+        <span class="cfail">on model/payload rejected → next</span>
+      </div>
+      <div class="cascade-arrow">↓ falls through</div>
+      <div class="cascade-item">
+        <span class="cnum">3</span>
+        <div><span class="cname">OpenRouter Gateway</span><span class="cendpoint">openrouter/free</span></div>
+        <span class="cfail">on failure → next</span>
+      </div>
+      <div class="cascade-arrow">↓ falls through</div>
+      <div class="cascade-item final">
+        <span class="cnum">4</span>
+        <div><span class="cname">Pollinations.ai</span><span class="cendpoint">public fallback endpoint</span></div>
+        <span class="cfail">last resort — always answers</span>
+      </div>
+    </div>
+    <div class="code-block"><span class="kw">try</span> {
+  aiRawText = <span class="kw">await</span> <span class="fn">callGeminiVision</span>(thumbnailCdnUrl);
+} <span class="kw">catch</span> (geminiErr) {
+  <span class="cmt">// caught, not crashed — fall through to the next provider</span>
+  <span class="kw">try</span> {
+    aiRawText = <span class="kw">await</span> <span class="fn">callGroqVision</span>(thumbnailCdnUrl);
+  } <span class="kw">catch</span> (groqErr) {
+    <span class="kw">try</span> {
+      aiRawText = <span class="kw">await</span> <span class="fn">callOpenRouterVision</span>(thumbnailCdnUrl);
+    } <span class="kw">catch</span> (orErr) {
+      aiRawText = <span class="kw">await</span> <span class="fn">callPollinationsFallback</span>(thumbnailCdnUrl);
+    }
+  }
+}</div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>The JSON hunter</h2>
+      <span class="tag">why AI replies can't go straight into JSON.parse()</span>
+    </div>
+    <p class="lede" style="margin-bottom:18px;">Models often answer with <em>"Here is the JSON you requested: ```json {...} ```"</em> instead of pure JSON. Feeding that straight into <code>JSON.parse()</code> throws a syntax error.</p>
+    <div class="code-block"><span class="kw">function</span> <span class="fn">extractJsonBoundaries</span>(text) {
+  <span class="cmt">// scan left→right for the first '{', right→left for the last '}'</span>
+  <span class="kw">const</span> startIndex = text.<span class="fn">indexOf</span>(<span class="str">'{'</span>);
+  <span class="kw">const</span> endIndex = text.<span class="fn">lastIndexOf</span>(<span class="str">'}'</span>);
+
+  <span class="cmt">// everything outside that range — markdown fences, chit-chat — gets discarded</span>
+  <span class="kw">return</span> text.<span class="fn">substring</span>(startIndex, endIndex + 1);
+}</div>
+    <p class="summary-line">It's a mechanical hunter, not a smart parser — it doesn't understand the text, it just finds the outermost braces and slices between them, guaranteeing <code>JSON.parse()</code> gets a pristine object.</p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>The demographic gate</h2>
+      <span class="tag">one field decides the document's fate</span>
+    </div>
+    <div class="gate-branches">
+      <div class="gate-branch rej">
+        <span class="status">status: "rejected"</span>
+        <h4>Branch A — non-female / brand</h4>
+        <p>The parsed <code>accountType.value</code> doesn't match the target profile. Document is marked rejected and processing stops here.</p>
+      </div>
+      <div class="gate-branch acc">
+        <span class="status">status: "completed"</span>
+        <h4>Branch B — target profile</h4>
+        <p>Matches the target demographic. Document is marked completed and cleared for migration into production.</p>
+      </div>
+    </div>
+    <div class="code-block"><span class="kw">const</span> accountType = analysisResult?.accountType?.value?.<span class="fn">toLowerCase</span>() || <span class="str">"unknown"</span>;
+<span class="kw">const</span> isTargetDemographic = accountType === <span class="str">"female"</span>;
+<span class="kw">const</span> finalStatus = isTargetDemographic ? <span class="str">"completed"</span> : <span class="str">"rejected"</span>;</div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>How an image becomes "code"</h2>
+      <span class="tag">yes — it really does send 1s and 0s, not a picture</span>
+    </div>
+    <p class="lede" style="margin-bottom:20px;">APIs can't attach a JPEG the way a chat app does. JSON is text-only, so the image has to be translated into text before it can travel inside the request.</p>
+    <div class="byte-chain">
+      <div class="byte-step">
+        <span class="stage">1 · fetch</span>
+        <div>
+          <span class="sample">image/jpeg, pixels</span>
+          <p>The server downloads the thumbnail from Instagram's CDN. At this point it's still a normal image file.</p>
+        </div>
+      </div>
+      <div class="byte-step">
+        <span class="stage">2 · ArrayBuffer</span>
+        <div>
+          <span class="sample">[255, 216, 255, 224, ...]</span>
+          <p>The file format is stripped away, leaving a raw sequence of numeric byte values in memory.</p>
+        </div>
+      </div>
+      <div class="byte-step">
+        <span class="stage">3 · Base64</span>
+        <div>
+          <span class="sample">/9j/4AAQSkZJRgABAQEASABIAAD...</span>
+          <p>Every 3 raw bytes get re-encoded into 4 safe ASCII characters — a text form that can travel inside a JSON payload without corruption.</p>
+        </div>
+      </div>
+      <div class="byte-step">
+        <span class="stage">4 · sent</span>
+        <div>
+          <span class="sample">{ inlineData: { data, mimeType } }</span>
+          <p>That giant text string is dropped into the request body and sent to Gemini or Groq, which decode it back into pixels on their end.</p>
+        </div>
+      </div>
+    </div>
+    <div class="code-block"><span class="kw">async function</span> <span class="fn">convertImageToAiPayload</span>(imageUrl) {
+  <span class="cmt">// Line 1: download the image file from Instagram's CDN</span>
+  <span class="kw">const</span> response = <span class="kw">await</span> <span class="fn">fetch</span>(imageUrl);
+
+  <span class="cmt">// Line 2: read it into a raw binary ArrayBuffer — just memory bytes now</span>
+  <span class="kw">const</span> arrayBuffer = <span class="kw">await</span> response.<span class="fn">arrayBuffer</span>();
+
+  <span class="cmt">// Line 3: wrap it in a Node Buffer so the byte numbers are easy to manipulate</span>
+  <span class="kw">const</span> nodeBuffer = Buffer.<span class="fn">from</span>(arrayBuffer);
+
+  <span class="cmt">// Line 4: encode the binary bytes into safe ASCII text</span>
+  <span class="kw">const</span> base64String = nodeBuffer.<span class="fn">toString</span>(<span class="str">"base64"</span>);
+
+  <span class="cmt">// Line 5: package it in the exact shape the AI API expects</span>
+  <span class="kw">return</span> {
+    inlineData: {
+      data: base64String,       <span class="cmt">// the whole image, now text</span>
+      mimeType: <span class="str">"image/jpeg"</span>    <span class="cmt">// tells the AI how to decode it</span>
+    }
+  };
+}</div>
+    <p class="summary-line">JSON can only carry text, so Base64 is the bridge: raw binary in, safe ASCII out. The AI's servers reverse the exact same steps — decode the text, rebuild the bytes, reconstruct the pixels — before its model ever "looks" at anything.</p>
+  </section>
+
+  <footer>two words, one interview — know which one they're asking about</footer>
+</div>
+</body>
+</html>
