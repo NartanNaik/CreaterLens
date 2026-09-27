@@ -39,6 +39,11 @@ export const getUsernames = async (category) => {
   return data.data;
 };
 
+export const getGlobalProfileCount = async () => {
+  const { data } = await api.get("/profiles/count");
+  return data;
+};
+
 export const massUploadUsernames = async (usernames, category) => {
   const { data } = await api.post("/profiles/mass-upload", { usernames, category });
   return data;

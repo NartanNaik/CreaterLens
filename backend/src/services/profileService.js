@@ -168,3 +168,8 @@ export const massUploadProfiles = async (usernamesString) => {
         newProfiles: addedProfiles
     };
 };
+
+export const getGlobalProfileCount = async () => {
+    const snapshot = await profilesCollection.get();
+    return snapshot.size;
+};

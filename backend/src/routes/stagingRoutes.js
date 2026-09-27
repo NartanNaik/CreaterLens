@@ -6,7 +6,8 @@ import {
     deleteStagingItemController,
     approveStagingItemController,
     bulkApproveStagingItemsController,
-    bulkDeleteStagingItemsController
+    bulkDeleteStagingItemsController,
+    bulkImportStagingItemsController
 } from '../controllers/stagingController.js';
 import { verifyToken } from '../middleware/authMiddleware.js';
 import rateLimit from 'express-rate-limit';
@@ -42,6 +43,9 @@ const aiProcessLimiter = rateLimit({
 
 // Route to receive incoming shared links from mobile/desktop
 router.post('/share', shareLimiter, shareReelController);
+
+// Route to handle mass bulk-imports from JSON Garbage Eater (Must be before /:id routes)
+router.post('/bulk-import', bulkImportStagingItemsController);
 
 // Route to fetch all pending items for the UI dashboard
 router.get('/', getStagingQueueController);

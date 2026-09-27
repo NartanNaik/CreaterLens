@@ -28,9 +28,13 @@ export const verifyToken = (req, res, next) => {
         req.user = verified;
         next();
     } catch (err) {
+        // PERMANENT FIX: Log the actual reason the token failed so you never have to guess again.
+        console.error("JWT Verification Failed:", err.message); 
+        
         return res.status(403).json({
             success: false,
-            message: 'Invalid or expired token.'
+            message: 'Invalid or expired token.',
+            reason: err.message // Sends the exact reason back to React/Flutter for debugging
         });
     }
 };

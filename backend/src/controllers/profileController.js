@@ -224,3 +224,20 @@ export const massUpload = async (req, res) => {
     });
   }
 };
+
+export const getGlobalCount = async (req, res) => {
+  try {
+    const count = await profileService.getGlobalProfileCount();
+    
+    return res.status(200).json({
+      success: true,
+      count: count
+    });
+  } catch (error) {
+    console.error("Error fetching global profile count:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Internal server error."
+    });
+  }
+};

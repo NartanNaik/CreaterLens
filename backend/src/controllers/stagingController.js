@@ -123,6 +123,83 @@ export const shareReelController = async (req, res) => {
 };
 
 /**
+ * Handle fast-track bulk import from the JSON Garbage Eater.
+ * Bypasses the scraper entirely to prevent Vercel 10s timeouts.
+ */
+export const bulkImportStagingItemsController = async (req, res) => {
+  try {
+    const { items } = req.body;
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "No valid items provided for bulk import."
+      });
+    }
+
+    const added = [];
+    const skipped = [];
+
+    for (const item of items) {
+      const reelUrl = item.url;
+      const handle = item.username;
+      const normalizedHandle = handle ? handle.toLowerCase().trim() : "unknown";
+
+      // 1. Ultra-Fast Bloom Filter Check For Username
+      if (normalizedHandle !== 'unknown' && bloomFilterService.has(normalizedHandle)) {
+        const exists = await profileService.checkProfileExists(normalizedHandle);
+        if (exists) {
+          skipped.push({ url: reelUrl, username: normalizedHandle, reason: "Creator already in database" });
+          continue;
+        }
+      }
+
+      // 2. Check if exact reel URL + username combo is already in current staging queue
+      const stagingCheck = await stagingCollection.where("url", "==", reelUrl).where("username", "==", normalizedHandle).get();
+      if (!stagingCheck.empty) {
+        skipped.push({ url: reelUrl, username: normalizedHandle, reason: "Already pending in staging queue" });
+        continue;
+      }
+
+      // 3. Check if exact reel URL + username combo is already approved in MAIN profile database
+      const profileUrlCheck = await profilesCollection.where("sourceUrl", "==", reelUrl).where("username", "==", normalizedHandle).get();
+      if (!profileUrlCheck.empty) {
+        skipped.push({ url: reelUrl, username: normalizedHandle, reason: "Creator from this reel already exists in approved profiles database" });
+        continue;
+      }
+
+      // 4. Save initial state instantly (Bypassing Scraper)
+      const stagingDoc = {
+        url: reelUrl,
+        username: handle,
+        thumbnailUrl: item.thumbnailUrl || "",
+        caption: item.caption || "",
+        status: "pending",
+        createdAt: new Date().toISOString()
+      };
+
+      const docRef = await stagingCollection.add(stagingDoc);
+      added.push({ id: docRef.id, ...stagingDoc });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Processed ${items.length} links. Added: ${added.length}, Skipped: ${skipped.length}`,
+      addedCount: added.length,
+      skippedCount: skipped.length,
+      added,
+      skipped
+    });
+  } catch (error) {
+    console.error("Error in bulk import:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Internal server error during bulk import."
+    });
+  }
+};
+
+/**
  * Fetch all pending items in Staging Queue
  */
 export const getStagingQueueController = async (req, res) => {
