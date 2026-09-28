@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import GarbageEater from './GarbageEater';
@@ -55,21 +55,27 @@ const RefreshIcon = () => (
   </svg>
 );
 
+const SearchIcon = () => (
+  <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-faint)' }}>
+    <circle cx="11" cy="11" r="8"></circle>
+    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+  </svg>
+);
+
 export default function StagingQueue() {
   const navigate = useNavigate();
   const [stagedItems, setStagedItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
+  const [searchTerm, setSearchTerm] = useState("");
   
   const [processingIds, setProcessingIds] = useState(new Set()); 
   const isAutoProcessingRef = useRef(false);
 
-  // FETCH QUEUE EXACTLY ONCE ON PAGE LOAD. NO BACKGROUND POLLING.
   useEffect(() => {
     fetchStagingQueue(true);
   }, []);
 
-  // STRICT SINGLE-FILE SEQUENTIAL QUEUE
   useEffect(() => {
     const processNextPendingItem = async () => {
       const pendingItem = stagedItems.find(item => 
@@ -81,7 +87,6 @@ export default function StagingQueue() {
         
         await handleProcessAISequence(pendingItem.id, pendingItem.status);
         
-        // Safe 6-second cooldown window between individual reels to respect Gemini API limits
         setTimeout(() => {
           isAutoProcessingRef.current = false;
         }, 6000);
@@ -193,11 +198,22 @@ export default function StagingQueue() {
     }
   };
 
+  // Instant local filtering based on search text
+  const filteredItems = useMemo(() => {
+    if (!searchTerm) return stagedItems;
+    const lower = searchTerm.toLowerCase();
+    return stagedItems.filter(item => 
+      (item.username && item.username.toLowerCase().includes(lower)) ||
+      (item.url && item.url.toLowerCase().includes(lower)) ||
+      (item.id && item.id.toLowerCase().includes(lower))
+    );
+  }, [stagedItems, searchTerm]);
+
   const handleToggleSelectAll = () => {
-    if (selectedIds.size === stagedItems.length) {
+    if (selectedIds.size === filteredItems.length && filteredItems.length > 0) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(stagedItems.map(item => item.id)));
+      setSelectedIds(new Set(filteredItems.map(item => item.id)));
     }
   };
 
@@ -281,6 +297,27 @@ export default function StagingQueue() {
         </div>
 
         <div className="staging-header-actions">
+          {/* SEARCH BAR */}
+          <div style={{ position: 'relative', marginRight: '8px' }}>
+            <SearchIcon />
+            <input 
+              type="text" 
+              placeholder="Search ID, username, or URL..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{
+                padding: '8px 12px 8px 32px',
+                borderRadius: '6px',
+                border: '1px solid var(--border-light)',
+                backgroundColor: 'var(--surface-sunken)',
+                color: 'var(--text-main)',
+                fontSize: '13px',
+                outline: 'none',
+                width: '240px'
+              }}
+            />
+          </div>
+
           <button 
             onClick={() => navigate('/dashboard')}
             className="staging-refresh-btn"
@@ -317,8 +354,7 @@ export default function StagingQueue() {
         </div>
       </div>
 
-      {/* NEW: Insert the Garbage Eater tool directly into the dashboard flow */}
-      <GarbageEater />
+      <GarbageEater onSuccess={() => fetchStagingQueue(false)} />
 
       {selectedIds.size > 0 && (
         <div style={{ marginBottom: '16px', padding: '12px 16px', backgroundColor: 'var(--surface-raised)', borderRadius: '8px', border: '1px solid var(--border-accent)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -336,7 +372,7 @@ export default function StagingQueue() {
               <th className="staging-col-checkbox">
                 <input 
                   type="checkbox"
-                  checked={stagedItems.length > 0 && selectedIds.size === stagedItems.length}
+                  checked={filteredItems.length > 0 && selectedIds.size === filteredItems.length}
                   onChange={handleToggleSelectAll}
                   className="staging-checkbox"
                 />
@@ -358,14 +394,15 @@ export default function StagingQueue() {
           </thead>
           
           <tbody>
-            {stagedItems.length === 0 ? (
+            {filteredItems.length === 0 ? (
               <tr>
                 <td colSpan="14" className="staging-empty-row">
-                  {loading ? "Loading staging queue..." : "No profiles currently waiting in the staging queue."}
+                  {loading ? "Loading staging queue..." : searchTerm ? "No items match your search." : "No profiles currently waiting in the staging queue."}
                 </td>
               </tr>
             ) : (
-              stagedItems.map((item) => {
+              // DOM NODE LIMITER: Render only 50 rows at a time to eliminate scrolling lag
+              filteredItems.slice(0, 50).map((item) => {
                 const isSelected = selectedIds.has(item.id);
                 const isProcessingRow = processingIds.has(item.id);
                 const isPendingAI = item.status === 'pending' || item.status === 'scraping_done';
