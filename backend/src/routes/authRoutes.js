@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { loginUser } from "../controllers/authController.js";
+import { loginUser, refreshTokenController } from "../controllers/authController.js";
 import rateLimit from "express-rate-limit";
 
 const router = Router();
@@ -18,5 +18,8 @@ const loginLimiter = rateLimit({
 
 // Apply the limiter middleware before passing to the controller
 router.post("/login", loginLimiter, loginUser);
+
+// Endpoint for silently refreshing tokens via Axios interceptor
+router.post("/refresh", refreshTokenController);
 
 export default router;

@@ -95,47 +95,59 @@ const callOpenAICompatible = async (provider, textPrompt, imagePartBase64) => {
     "Content-Type": "application/json",
     "Authorization": `Bearer ${provider.key}`
   };
+  
+  // Flag to determine if this specific provider tier can handle vision payloads
+  let supportsVision = false;
 
   if (provider.type === "groq") {
     url = "https://api.groq.com/openai/v1/chat/completions";
     model = "llama-3.2-11b-vision-preview"; 
+    supportsVision = true;
   } else if (provider.type === "openrouter") {
     url = "https://openrouter.ai/api/v1/chat/completions";
-    model = "openrouter/free"; 
+    model = "openrouter/free"; // Often routes to text-only models
     headers["HTTP-Referer"] = "https://creatorlens.local"; 
     headers["X-Title"] = "CreatorLens Pipeline";
+    supportsVision = false; 
   } else if (provider.type === "pollinations") {
     url = "https://text.pollinations.ai/openai/chat/completions";
     model = "openai"; 
+    supportsVision = false;
   }
 
   const combinedText = `${SYSTEM_PROMPT}\n\n${textPrompt}`;
+  let messages = [];
 
-  const messages = [
-    { 
-      role: "user", 
-      content: [{ type: "text", text: combinedText }] 
-    }
-  ];
-
-  if (imagePartBase64) {
-    messages[0].content.push({
-      type: "image_url",
-      image_url: { url: imagePartBase64 }
-    });
+  // THE FIX: Dynamically build the payload structure based on Vision capability
+  if (supportsVision && imagePartBase64) {
+    messages = [
+      { 
+        role: "user", 
+        content: [
+          { type: "text", text: combinedText },
+          { type: "image_url", image_url: { url: imagePartBase64 } }
+        ] 
+      }
+    ];
+  } else {
+    // Standard text-only string format to prevent 400 Bad Request crashes
+    messages = [
+      { 
+        role: "user", 
+        content: combinedText
+      }
+    ];
   }
 
   const response = await axios.post(url, {
     model: model,
     messages: messages,
     temperature: 0.4
-  }, { headers, timeout: 30000 });
+  }, { headers, timeout: 25000 });
 
   let responseText = response.data.choices[0].message.content;
   
-  // THE FIX: The Bulletproof JSON Hunter
-  // Find the first '{' and the last '}' to extract ONLY the pure JSON object, 
-  // ignoring any conversational garbage like "User Safety: safe"
+  // The Bulletproof JSON Hunter
   const jsonStart = responseText.indexOf('{');
   const jsonEnd = responseText.lastIndexOf('}');
   

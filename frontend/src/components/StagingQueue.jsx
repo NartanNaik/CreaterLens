@@ -147,12 +147,17 @@ export default function StagingQueue() {
         setStagedItems(prev => prev.map(item => item.id === id ? { ...item, ...data.data } : item));
       }
     } catch (error) {
-      console.warn("Processing encountered an issue for item:", id, error);
-      
-      if (error.response && error.response.status === 429) {
-        setStagedItems(prev => prev.map(item => item.id === id ? { ...item, status: 'pending' } : item));
+      if (error.response && error.response.status === 404) {
+        // RACE CONDITION CAUGHT: The item was already approved/deleted by you.
+        // Silently remove it from the UI without throwing an error.
+        setStagedItems(prev => prev.filter(item => item.id !== id));
       } else {
-        setStagedItems(prev => prev.map(item => item.id === id ? { ...item, status: 'failed' } : item));
+        console.warn("Processing encountered an issue for item:", id, error);
+        if (error.response && error.response.status === 429) {
+          setStagedItems(prev => prev.map(item => item.id === id ? { ...item, status: 'pending' } : item));
+        } else {
+          setStagedItems(prev => prev.map(item => item.id === id ? { ...item, status: 'failed' } : item));
+        }
       }
     } finally {
       setRowProcessing(id, false);
@@ -243,18 +248,28 @@ export default function StagingQueue() {
     }
   };
 
-  const handleApproveAll = async () => {
+const handleApproveAll = async () => {
     if (stagedItems.length === 0) return;
-    if (!window.confirm("Are you sure you want to approve ALL profiles in this queue?")) return;
+    if (!window.confirm(`Are you sure you want to approve ALL ${stagedItems.length} profiles? This will process in batches.`)) return;
     
     setLoading(true);
+    
+    // 1. Snapshot all IDs and instantly kill the UI state so the AI loop stops
+    const allIds = stagedItems.map(item => item.id);
+    setStagedItems([]);
+    setSelectedIds(new Set());
+
+    const BATCH_SIZE = 100;
+
     try {
-      const allIds = stagedItems.map(item => item.id);
-      await api.post('/staging/bulk-approve', { ids: allIds });
-      setStagedItems([]);
-      setSelectedIds(new Set());
+      // 2. Loop through the array in chunks of 100 and send them sequentially
+      for (let i = 0; i < allIds.length; i += BATCH_SIZE) {
+        const batch = allIds.slice(i, i + BATCH_SIZE);
+        await api.post('/staging/bulk-approve', { ids: batch });
+      }
     } catch (error) {
-      console.error("Approve All failed:", error);
+      console.error("A batch failed during Approve All:", error);
+      fetchStagingQueue(false); // Restore UI to show whatever failed to process
     } finally {
       setLoading(false);
     }
@@ -262,16 +277,26 @@ export default function StagingQueue() {
 
   const handleDeleteAll = async () => {
     if (stagedItems.length === 0) return;
-    if (!window.confirm("Are you sure you want to PERMANENTLY DELETE ALL items in this queue?")) return;
+    if (!window.confirm(`Are you sure you want to PERMANENTLY DELETE ALL ${stagedItems.length} items?`)) return;
     
     setLoading(true);
+    
+    // 1. Snapshot and kill UI
+    const allIds = stagedItems.map(item => item.id);
+    setStagedItems([]);
+    setSelectedIds(new Set());
+
+    const BATCH_SIZE = 100;
+
     try {
-      const allIds = stagedItems.map(item => item.id);
-      await api.post('/staging/bulk-delete', { ids: allIds });
-      setStagedItems([]);
-      setSelectedIds(new Set());
+      // 2. Loop and delete in chunks
+      for (let i = 0; i < allIds.length; i += BATCH_SIZE) {
+        const batch = allIds.slice(i, i + BATCH_SIZE);
+        await api.post('/staging/bulk-delete', { ids: batch });
+      }
     } catch (error) {
-      console.error("Delete All failed:", error);
+      console.error("A batch failed during Delete All:", error);
+      fetchStagingQueue(false);
     } finally {
       setLoading(false);
     }

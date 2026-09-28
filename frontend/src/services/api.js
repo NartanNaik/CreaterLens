@@ -4,15 +4,93 @@ const api = axios.create({
   baseURL: `${import.meta.env.VITE_API_URL}/api`
 });
 
+// --- THE FIX: State variables to manage the refresh queue ---
+let isRefreshing = false;
+let failedQueue = [];
+
+const processQueue = (error, token = null) => {
+  failedQueue.forEach(prom => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+};
+
+// 1. REQUEST INTERCEPTOR: Attach token dynamically before every request
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
-
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
-
   return config;
 });
+
+// 2. RESPONSE INTERCEPTOR: The Production-Grade Failsafe
+api.interceptors.response.use(
+  (response) => response, // If request succeeds, just return it.
+  async (error) => {
+    const originalRequest = error.config;
+
+    // If it's a 401 or 403 (Token missing/expired) AND we haven't already retried this exact request
+    if ((error.response?.status === 401 || error.response?.status === 403) && !originalRequest._retry) {
+      
+      // If another request is already refreshing the token, queue this one up and wait
+      if (isRefreshing) {
+        return new Promise(function(resolve, reject) {
+          failedQueue.push({ resolve, reject });
+        }).then(token => {
+          originalRequest.headers.Authorization = `Bearer ${token}`;
+          return api(originalRequest);
+        }).catch(err => Promise.reject(err));
+      }
+
+      // We are the first request to fail. Lock the queue and start refreshing.
+      originalRequest._retry = true;
+      isRefreshing = true;
+
+      try {
+        const refreshToken = localStorage.getItem("refreshToken");
+        if (!refreshToken) throw new Error("No refresh token available");
+
+        // Hit the backend to get a fresh pair of tokens
+        const { data } = await axios.post(`${import.meta.env.VITE_API_URL}/api/auth/refresh`, {
+          refreshToken
+        });
+
+        const newToken = data.token;
+        
+        // Save the fresh tokens
+        localStorage.setItem("token", newToken);
+        if (data.refreshToken) {
+          localStorage.setItem("refreshToken", data.refreshToken);
+        }
+
+        // Apply new token to the paused request
+        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+
+        // Release the queue so all other paused requests can replay with the new token
+        processQueue(null, newToken);
+        
+        return api(originalRequest);
+      } catch (err) {
+        // If the refresh token is ALSO dead, it's game over. Nuke storage and force a hard logout.
+        processQueue(err, null);
+        localStorage.removeItem("token");
+        localStorage.removeItem("refreshToken");
+        window.location.href = "/login"; // Kick them to the login screen
+        return Promise.reject(err);
+      } finally {
+        // Unlock the interceptor
+        isRefreshing = false;
+      }
+    }
+
+    return Promise.reject(error);
+  }
+);
 
 export const login = async (id, password) => {
   const { data } = await api.post("/auth/login", {
@@ -54,18 +132,12 @@ export const deleteUsername = async (id) => {
   return data;
 };
 
-// NOTE: no bulk-delete route exists in profileRoutes.js (only DELETE /:id).
-// This will still 404/405 until you add a matching DELETE '/' route with
-// deleteAllProfiles in profileRoutes.js + profileController.js.
 export const deleteAllUsernames = async (category) => {
   const { data } = await api.delete("/profiles", { data: { category } });
   return data;
 };
 
-// --- The following do not match any route shown in profileRoutes.js.
-// They likely belong in attributeRoutes.js (mounted at /api/attributes).
-// Verify attributeRoutes.js defines these paths before trusting them;
-// left as /usernames/... since their real backend location wasn't shown. ---
+// --- Attribute Routes ---
 
 export const updateNation = async (id, nation) => {
   const { data } = await api.put(`/usernames/nation/${id}`, { nation });
@@ -108,7 +180,7 @@ export const updateUserSettings = async (settings) => {
   return data;
 };
 
-// GLOBAL CATEGORIES (shared across all users)
+// GLOBAL CATEGORIES
 export const getGlobalCategories = async () => {
   const { data } = await api.get("/users/categories");
   return data.data;

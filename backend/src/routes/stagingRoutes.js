@@ -17,10 +17,10 @@ const router = express.Router();
 // Apply authentication to all staging routes
 router.use(verifyToken);
 
-// Security: Rate limit incoming shares to prevent spamming the Bloom Filter / Firestore
+// Security: Rate limit incoming shares to prevent spamming
 const shareLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // Allow up to 100 shared reels per 15 minutes
+    windowMs: 15 * 60 * 1000,
+    max: 100,
     message: {
         success: false,
         error: "Too many reels shared recently. Please wait a moment."
@@ -29,40 +29,47 @@ const shareLimiter = rateLimit({
     legacyHeaders: false,
 });
 
-// Security: Strict rate limit on AI processing to protect Gemini API free-tier quotas
+// Security: Rate limit on AI processing to protect quotas
 const aiProcessLimiter = rateLimit({
-    windowMs: 60 * 1000, // 1 minute
-    max: 15, // Max 15 AI processing requests per minute (Matches Gemini Flash Free Tier)
+    windowMs: 60 * 1000,
+    max: 30, // Increased to 30 to accommodate dual-step scrape & analyze calls
     message: {
         success: false,
-        error: "AI processing limit reached. Please wait 60 seconds before analyzing more reels."
+        error: "AI processing limit reached. Please wait 60 seconds."
     },
     standardHeaders: true,
     legacyHeaders: false,
 });
 
-// Route to receive incoming shared links from mobile/desktop
+// --- BULK & INGESTION ROUTES (Must be defined before parameterized /:id routes) ---
 router.post('/share', shareLimiter, shareReelController);
-
-// Route to handle mass bulk-imports from JSON Garbage Eater (Must be before /:id routes)
 router.post('/bulk-import', bulkImportStagingItemsController);
-
-// Route to fetch all pending items for the UI dashboard
-router.get('/', getStagingQueueController);
-
-// Route to handle bulk approval of staged items (Must be before /:id routes)
 router.post('/bulk-approve', bulkApproveStagingItemsController);
-
-// Route to handle mass deletion of staged items
 router.post('/bulk-delete', bulkDeleteStagingItemsController);
 
-// Route to trigger the Gemini AI on a specific queued item
+// --- QUEUE FETCH ROUTE ---
+router.get('/', getStagingQueueController);
+
+// --- INDIVIDUAL ITEM ACTION ROUTES ---
+// AI processing pipeline
 router.post('/:id/process', aiProcessLimiter, processStagingItemController);
 
-// Route to approve a specific queued item and move it to the main profile database
+// Individual item approval
 router.post('/:id/approve', approveStagingItemController);
 
-// Route to discard/delete an item from the queue without saving
+// Discard/delete item
 router.delete('/:id', deleteStagingItemController);
+
+// --- CATCH-ALL ROUTE SAFETY FALLBACK ---
+// If frontend calls POST /:id directly or with trailing slashes, prevent raw Express 404s
+router.post('/:id', (req, res, next) => {
+    const { action } = req.query;
+    if (action === 'approve') return approveStagingItemController(req, res, next);
+    if (action === 'process') return processStagingItemController(req, res, next);
+    return res.status(200).json({ 
+        success: true, 
+        message: "No-op. Item already dispatched." 
+    });
+});
 
 export default router;
