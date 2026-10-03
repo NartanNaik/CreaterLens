@@ -1,58 +1,69 @@
-import React from "react";
+import React, { useEffect, useLayoutEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 
-// --- Inline SVGs (No Emojis) ---
-const ArrowDownIcon = () => (
-  <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="12" y1="5" x2="12" y2="19"></line>
-    <polyline points="19 12 12 19 5 12"></polyline>
-  </svg>
-);
+const OFFSET = 16; // gap between cursor and pill
+const MARGIN = 8;  // minimum gap to the viewport edge
 
-export default function DragFillOverlay({
-  visible,
-  value,
-  count
-}) {
-  if (!visible) {
-    return null;
-  }
+const formatValue = (v) => {
+  if (v === null || v === undefined || v === '') return '-';
+  if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+  return String(v); // 0 stays "0"
+};
 
-  return (
-    <div className="modal-overlay drag-fill-overlay-backdrop">
-      <div className="drag-fill-card glass-panel">
-        
-        {/* Cinematic Top Edge Accent */}
-        <div className="drag-fill-accent-bar" />
+export default function DragFillOverlay({ visible, value, count }) {
+  const pillRef = useRef(null);
+  const posRef = useRef({ x: -9999, y: -9999 });
 
-        {/* Icon */}
-        <div className="drag-fill-icon-box">
-          <ArrowDownIcon />
-        </div>
+  // Position the pill near the cursor, flipping or clamping so it stays on screen.
+  // Writes straight to the element's style, so cursor movement causes no React re-renders.
+  const place = () => {
+    const el = pillRef.current;
+    if (!el) return;
 
-        {/* Title */}
-        <h3 className="drag-fill-title">Drag Fill</h3>
+    const { x, y } = posRef.current;
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
 
-        {/* Value Preview box */}
-        <div className="drag-fill-preview-box">
-          <span className="drag-fill-preview-text">
-            {value || "-"}
-          </span>
-        </div>
+    let left = x + OFFSET;
+    let top = y + OFFSET;
+    if (left + w > vw - MARGIN) left = x - OFFSET - w; // flip to the left of the cursor
+    if (top + h > vh - MARGIN) top = y - OFFSET - h;   // flip above the cursor
 
-        {/* Count Info */}
-        <p className="drag-fill-count-info">
-          Filling <strong className="drag-fill-highlight">{count}</strong> row{count !== 1 ? "s" : ""}
-        </p>
+    left = Math.max(MARGIN, Math.min(left, vw - w - MARGIN));
+    top = Math.max(MARGIN, Math.min(top, vh - h - MARGIN));
 
-        {/* Indeterminate Loader Animation */}
-        <div className="drag-fill-loader-track">
-          {/* Base pulse */}
-          <div className="drag-fill-loader-base"></div>
-          {/* Glowing animated bar */}
-          <div className="drag-fill-loader-bar"></div>
-        </div>
+    el.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`;
+  };
 
-      </div>
-    </div>
+  // Always remember the last cursor position, so the pill appears in the right place
+  // the moment a drag becomes visible.
+  useEffect(() => {
+    const onMove = (e) => {
+      posRef.current = { x: e.clientX, y: e.clientY };
+      place();
+    };
+    window.addEventListener('mousemove', onMove, { passive: true });
+    return () => window.removeEventListener('mousemove', onMove);
+  }, []);
+
+  // Re-place when the pill mounts or its text (and therefore its width) changes.
+  useLayoutEffect(() => {
+    if (visible) place();
+  }, [visible, value, count]);
+
+  if (!visible) return null;
+
+  const rows = `${count} row${count !== 1 ? 's' : ''}`;
+
+  return createPortal(
+    <div className="drag-fill-pill" ref={pillRef} aria-hidden="true">
+      <span className="drag-fill-pill-label">Fill {rows} with</span>
+      <span className="drag-fill-pill-quote">‘</span>
+      <span className="drag-fill-pill-value">{formatValue(value)}</span>
+      <span className="drag-fill-pill-quote">’</span>
+    </div>,
+    document.body
   );
 }

@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
+import api from '../services/api';
 import AverageViewsModal from './AverageViewsModal';
 import CustomCategoryBuilder from './CustomCategoryBuilder';
 import ProfileChecker from './ProfileChecker';
@@ -9,8 +11,6 @@ import EditableCell from './EditableCell';
 import MassUploadModal from './MassUploadModal';
 import DragFillOverlay from './DragFillOverlay';
 import useDragFill from '../hooks/useDragFill';
-
-const API_BASE = import.meta.env.VITE_API_URL || '';
 
 // --- Clean SVG Icons ---
 const LayersIcon = () => (
@@ -92,28 +92,9 @@ const readStorage = (key, fallback) => {
   }
 };
 
-// fetch wrapper: adds auth + JSON headers and THROWS on HTTP errors
-// (plain fetch only rejects on network failure, so failed saves used to go unnoticed)
-const request = async (path, options = {}) => {
-  const res = await fetch(`${API_BASE}/api${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${localStorage.getItem('token')}`,
-      ...(options.headers || {})
-    }
-  });
-
-  if (!res.ok) {
-    let message = `Request failed (${res.status})`;
-    try {
-      const body = await res.json();
-      if (body && body.error) message = body.error;
-    } catch { /* ignore */ }
-    throw new Error(message);
-  }
-  return res;
-};
+// Pull a readable message out of an axios error (the shared instance handles auth + token refresh)
+const errMsg = (error, fallback) =>
+  error?.response?.data?.error || error?.message || fallback;
 
 const applyValue = (profile, key, value, isCustom) =>
   isCustom
@@ -146,6 +127,12 @@ const copyText = async (text) => {
   if (!ok) throw new Error('copy failed');
 };
 
+// How many 9:16 videos fit across the window at full height
+const calcVideoCount = () => {
+  const videoWidth = window.innerHeight * (9 / 16);
+  return Math.max(1, Math.ceil(window.innerWidth / videoWidth)) || 5;
+};
+
 export default function ProfileDashboard() {
   const navigate = useNavigate();
   const { isVideoTheme } = useOutletContext() || { isVideoTheme: false };
@@ -154,7 +141,7 @@ export default function ProfileDashboard() {
   const [customColumns, setCustomColumns] = useState([]);
   const [fetching, setFetching] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [bgVideoCount, setBgVideoCount] = useState(5);
+  const [bgVideoCount, setBgVideoCount] = useState(calcVideoCount);
 
   const [isAvgCalcOpen, setIsAvgCalcOpen] = useState(false);
   const [isAddCategoryOpen, setIsAddCategoryOpen] = useState(false);
@@ -173,22 +160,17 @@ export default function ProfileDashboard() {
   const [hiddenCols, setHiddenCols] = useState(() => readStorage('hiddenCols', []));
   const [renamedCols, setRenamedCols] = useState(() => readStorage('renamedCols', {}));
 
-  // Dynamic Background Video Calculator + close context menu on click
+  // Recalculate video count on resize + close context menu on click
   useEffect(() => {
-    const calculateVideoCount = () => {
-      const videoWidth = window.innerHeight * (9 / 16);
-      const count = Math.ceil(window.innerWidth / videoWidth);
-      setBgVideoCount(count || 5);
-    };
-
-    calculateVideoCount();
-    window.addEventListener('resize', calculateVideoCount);
-
+    const onResize = () => setBgVideoCount(calcVideoCount());
     const closeMenu = () => setContextMenu(null);
+
+    onResize();
+    window.addEventListener('resize', onResize);
     window.addEventListener('click', closeMenu);
 
     return () => {
-      window.removeEventListener('resize', calculateVideoCount);
+      window.removeEventListener('resize', onResize);
       window.removeEventListener('click', closeMenu);
     };
   }, []);
@@ -211,18 +193,18 @@ export default function ProfileDashboard() {
     setFetching(true);
     try {
       const [profilesRes, columnsRes] = await Promise.all([
-        request('/profiles'),
-        request('/settings/columns')
+        api.get('/profiles'),
+        api.get('/settings/columns')
       ]);
 
-      const profilesData = await profilesRes.json();
-      const columnsData = await columnsRes.json();
+      const profilesData = profilesRes.data;
+      const columnsData = columnsRes.data;
 
-      setProfiles(Array.isArray(profilesData) ? profilesData : (profilesData.data || []));
-      setCustomColumns(Array.isArray(columnsData) ? columnsData : (columnsData.data || []));
+      setProfiles(Array.isArray(profilesData) ? profilesData : (profilesData?.data || []));
+      setCustomColumns(Array.isArray(columnsData) ? columnsData : (columnsData?.data || []));
     } catch (error) {
-      console.error("Error fetching data:", error);
-      toast.error(error.message || "Failed to load profiles.");
+      console.error('Error fetching data:', error);
+      toast.error(errMsg(error, 'Failed to load profiles.'));
       setProfiles([]);
       setCustomColumns([]);
     } finally {
@@ -239,58 +221,48 @@ export default function ProfileDashboard() {
     setProfiles(prev => prev.map(p => p.id === id ? { ...p, avgViewsPerWeek: newAverage } : p));
 
     try {
-      await request(`/profiles/${id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ avgViewsPerWeek: newAverage })
-      });
+      await api.patch(`/profiles/${id}`, { avgViewsPerWeek: newAverage });
     } catch (error) {
-      console.error("Failed to save avg views:", error);
-      toast.error("Failed to save average views.");
+      console.error('Failed to save avg views:', error);
+      toast.error(errMsg(error, 'Failed to save average views.'));
       if (previous) setProfiles(prev => prev.map(p => p.id === id ? { ...p, avgViewsPerWeek: previous.avgViewsPerWeek } : p));
     }
   };
 
   const handleSaveNewCategory = async (categoryData) => {
     try {
-      const response = await request('/settings/columns', {
-        method: 'POST',
-        body: JSON.stringify(categoryData)
-      });
-      const result = await response.json();
-      setCustomColumns(prev => [...prev, result.column]);
-      toast.success("Category added!");
+      const response = await api.post('/settings/columns', categoryData);
+      setCustomColumns(prev => [...prev, response.data.column]);
+      toast.success('Category added!');
     } catch (error) {
-      console.error("Error adding category:", error);
-      toast.error(error.message || "Failed to add category");
+      console.error('Error adding category:', error);
+      toast.error(errMsg(error, 'Failed to add category'));
     }
   };
 
   const handleDeleteCategory = async (columnToDelete) => {
     try {
-      await request('/settings/columns', {
-        method: 'DELETE',
-        body: JSON.stringify(columnToDelete)
-      });
+      await api.delete('/settings/columns', { data: columnToDelete });
       setCustomColumns(prev => prev.filter(col => col.columnId !== columnToDelete.columnId));
-      toast.success("Column deleted!");
+      toast.success('Column deleted!');
     } catch (error) {
-      console.error("Error deleting category:", error);
-      toast.error(error.message || "Failed to delete column");
+      console.error('Error deleting category:', error);
+      toast.error(errMsg(error, 'Failed to delete column'));
     }
   };
 
   const handleDeleteRow = async (id) => {
-    if (!window.confirm("Delete this profile?")) return;
+    if (!window.confirm('Delete this profile?')) return;
 
     const removed = profiles.find(p => p.id === id);
     setProfiles(prev => prev.filter(p => p.id !== id));
 
     try {
-      await request(`/profiles/${id}`, { method: 'DELETE' });
-      toast.success("Profile deleted");
+      await api.delete(`/profiles/${id}`);
+      toast.success('Profile deleted');
     } catch (error) {
-      console.error("Failed to delete:", error);
-      toast.error("Failed to delete profile.");
+      console.error('Failed to delete:', error);
+      toast.error(errMsg(error, 'Failed to delete profile.'));
       if (removed) setProfiles(prev => [removed, ...prev]); // roll back
     }
   };
@@ -360,7 +332,7 @@ export default function ProfileDashboard() {
     for (let i = 0; i < toDelete.length; i += BATCH_SIZE) {
       const batch = toDelete.slice(i, i + BATCH_SIZE);
       const results = await Promise.allSettled(
-        batch.map(p => request(`/profiles/${p.id}`, { method: 'DELETE' }))
+        batch.map(p => api.delete(`/profiles/${p.id}`))
       );
       results.forEach((r, idx) => {
         if (r.status === 'rejected') failed.push(batch[idx]);
@@ -388,20 +360,16 @@ export default function ProfileDashboard() {
       : { [field]: newValue };
 
     try {
-      await request(`/profiles/${profileId}`, { method: 'PATCH', body: JSON.stringify(payload) });
+      await api.patch(`/profiles/${profileId}`, payload);
     } catch (error) {
       console.error(`Failed to update ${field}:`, error);
-      toast.error(`Failed to save ${field}.`);
+      toast.error(errMsg(error, `Failed to save ${field}.`));
       setProfiles(prev => prev.map(p => p.id === profileId ? original : p)); // roll back
     }
   };
 
-  /*
-    FIX: drag-fill indices come from the rows as DISPLAYED (filtered + sorted), but this
-    used to slice/map the raw `profiles` array, so with any search or sort active it
-    filled the wrong rows. It now resolves the affected rows from the displayed list and
-    updates by id. Dragging upward (start > end) is also handled.
-  */
+  // Drag-fill indices come from the rows as DISPLAYED (filtered + sorted), so resolve the
+  // affected rows from the displayed list and update by id. Dragging upward is handled too.
   const dragFill = useDragFill(async (startIdx, endIdx, columnKey, newValue) => {
     const lo = Math.min(startIdx, endIdx);
     const hi = Math.max(startIdx, endIdx);
@@ -418,7 +386,7 @@ export default function ProfileDashboard() {
       const payload = isCustom
         ? { customCategories: next.customCategories }
         : { [columnKey]: newValue };
-      return request(`/profiles/${profile.id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+      return api.patch(`/profiles/${profile.id}`, payload);
     }));
 
     const failedIds = new Set(
@@ -449,9 +417,7 @@ export default function ProfileDashboard() {
     onMouseUp: () => dragFill.handleMouseUp(index, key)
   });
 
-  // NOTE: this is a plain render function, not a component. It used to be a component
-  // defined inside ProfileDashboard, which React remounted on every render.
-  // Sticky/background/border styling now comes from the stylesheet.
+  // Plain render function (not a component) so React doesn't remount headers every render.
   const renderHeader = (label, sortKey, isCustom = false, sortable = true) => {
     if (hiddenCols.includes(sortKey)) return null;
     const displayLabel = renamedCols[sortKey] || label;
@@ -563,6 +529,7 @@ export default function ProfileDashboard() {
     }
   };
 
+  // Video URLs come from the currently visible (filtered + sorted) rows, capped to what fits across the window
   const bgVideos = useMemo(
     () => filteredAndSortedProfiles.filter(p => p.videoPreviewUrl).slice(0, bgVideoCount),
     [filteredAndSortedProfiles, bgVideoCount]
@@ -578,9 +545,11 @@ export default function ProfileDashboard() {
       onMouseUp={dragFill.handleGlobalMouseUp}
     >
 
-      {/* DYNAMIC VIDEO BACKGROUND (was a solid black box with the Instagram link as video src) */}
-      {isVideoTheme && bgVideos.length > 0 && (
-        <div className="video-bg-container">
+      {/* VIDEO THEME BACKGROUND
+          Rendered through a portal to <body> so no ancestor stacking context can trap the
+          z-index. With no video URLs among the visible rows, only the black base shows. */}
+      {isVideoTheme && createPortal(
+        <div className="video-bg-layer" aria-hidden="true">
           {bgVideos.map((p) => (
             <video
               key={p.id}
@@ -589,9 +558,11 @@ export default function ProfileDashboard() {
               loop
               muted
               playsInline
+              preload="auto"
             />
           ))}
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Top Action Toolbar */}
@@ -625,7 +596,7 @@ export default function ProfileDashboard() {
           </button>
 
           <button onClick={handleDeleteAll} disabled={deleting} className="action-btn delete-btn" style={{ padding: '8px 12px' }}>
-            <TrashIcon /> {deleting ? "Deleting..." : "Delete All"}
+            <TrashIcon /> {deleting ? 'Deleting...' : 'Delete All'}
           </button>
 
           <div style={{ width: '1px', height: '24px', backgroundColor: 'var(--glass-border-strong)', margin: '0 4px' }}></div>
@@ -649,8 +620,7 @@ export default function ProfileDashboard() {
         customColumns={customColumns}
       />
 
-      {/* SCROLLABLE Table Wrapper (border/radius come from .glass-panel; the old
-          var(--border-light) was never defined, which silently dropped the border) */}
+      {/* SCROLLABLE Table Wrapper */}
       <div className="table-wrapper glass-panel flex-1" style={{ marginTop: 0 }}>
         <table className="profile-table w-full text-left">
           <thead>
@@ -747,7 +717,7 @@ export default function ProfileDashboard() {
             <>
               <button
                 onClick={() => {
-                  const newName = window.prompt("Rename Column:", contextMenu.colName);
+                  const newName = window.prompt('Rename Column:', contextMenu.colName);
                   if (newName && newName.trim()) {
                     setRenamedCols(prev => ({ ...prev, [contextMenu.colId]: newName.trim() }));
                   }

@@ -956,3 +956,549 @@ input[type="checkbox"] {
   .brand { font-size: 22px; }
   .nav-link { padding: 6px 10px; }
 }
+
+/* ---------- Login page (these classes were used by Login.jsx but never defined) ---------- */
+.login-page-container {
+  flex: 1;
+  min-height: 100dvh;
+  overflow: auto;
+  position: relative;
+}
+
+.login-glow-top,
+.login-glow-bottom {
+  position: absolute;
+  width: 420px;
+  height: 420px;
+  border-radius: 50%;
+  filter: blur(90px);
+  pointer-events: none;
+  z-index: 0;
+}
+.login-glow-top { top: -140px; left: -120px; background: rgba(255, 255, 255, 0.55); }
+.login-glow-bottom { bottom: -160px; right: -120px; background: rgba(219, 39, 119, 0.35); }
+
+.login-card {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 420px;
+  padding: 40px 36px;
+  display: flex;
+  flex-direction: column;
+}
+
+.login-header-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+}
+
+.login-icon-box {
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+  box-shadow: 0 10px 24px rgba(214, 19, 110, 0.35);
+}
+
+.login-heading {
+  margin: 6px 0 0;
+  font-family: var(--font-display);
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-main);
+}
+
+.login-subheading {
+  margin: 0;
+  font-size: 15px;
+  color: var(--text-muted);
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-top: 30px;
+}
+
+.login-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.login-label {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+}
+
+.login-input-wrap { position: relative; }
+
+.login-input-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  color: var(--text-muted);
+  pointer-events: none;
+  transition: color 0.2s var(--ease);
+}
+.login-input-wrap:focus-within .login-input-icon { color: var(--primary-color); }
+
+.login-input {
+  width: 100%;
+  height: 48px;
+  padding: 0 46px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--glass-border-strong);
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--text-main);
+  font-family: var(--font-body);
+  font-size: 15px;
+  outline: none;
+  transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease), background 0.2s var(--ease);
+}
+.login-input::placeholder { color: var(--text-muted); opacity: 0.6; }
+.login-input:focus {
+  border-color: var(--primary-color);
+  background: #fff;
+  box-shadow: var(--shadow-glow);
+}
+.login-input[aria-invalid="true"] { border-color: var(--status-no); }
+
+.login-toggle-pw {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.2s var(--ease), background 0.2s var(--ease);
+}
+.login-toggle-pw:hover { color: var(--primary-color); background: rgba(214, 19, 110, 0.08); }
+
+.login-error-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(212, 48, 76, 0.12);
+  border: 1px solid rgba(212, 48, 76, 0.35);
+  color: var(--status-no);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.login-submit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  height: 48px;
+  margin-top: 4px;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+}
+.login-submit-btn:disabled { opacity: 0.7; cursor: wait; }
+
+.login-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 768px) {
+  .login-card { padding: 32px 22px; }
+  .login-heading { font-size: 30px; }
+}
+/* ---------- ProfileChecker (classes used by ProfileChecker.jsx that had no styles) ---------- */
+.checker-input-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.checker-input-wrapper {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.checker-input-icon {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  color: var(--text-muted);
+  pointer-events: none;
+  transition: color 0.2s var(--ease);
+}
+.checker-input-wrapper:focus-within .checker-input-icon { color: var(--primary-color); }
+
+.checker-input-field {
+  width: 100%;
+  height: 48px;
+  padding: 0 14px 0 46px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--glass-border-strong);
+  background: var(--glass-bg-strong);
+  color: var(--text-main);
+  font-family: var(--font-body);
+  font-size: 15px;
+  outline: none;
+  transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease), background 0.2s var(--ease);
+}
+.checker-input-field::placeholder { color: var(--text-muted); opacity: 0.65; }
+.checker-input-field:focus {
+  border-color: var(--primary-color);
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: var(--shadow-glow);
+}
+
+.checker-check-btn {
+  height: 48px;
+  padding: 0 24px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+  color: #fff;
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(214, 19, 110, 0.26);
+  transition: transform 0.15s var(--ease), filter 0.15s var(--ease), opacity 0.15s var(--ease);
+}
+.checker-check-btn:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-1px); }
+.checker-check-btn:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+
+.checker-warning-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: rgba(184, 121, 31, 0.14);
+  border: 1px solid rgba(184, 121, 31, 0.4);
+  color: #8a5a12;
+  font-size: 14px;
+  font-weight: 600;
+}
+.checker-warning-box.error {
+  background: rgba(212, 48, 76, 0.12);
+  border-color: rgba(212, 48, 76, 0.35);
+  color: var(--status-no);
+}
+
+.checker-available-box { margin-top: 18px; }
+
+.checker-available-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--status-yes);
+}
+.checker-available-header h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.checker-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 16px;
+}
+
+.checker-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.checker-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.checker-field-input,
+.checker-field-select {
+  width: 100%;
+  height: 42px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--glass-border-strong);
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--text-main);
+  font-family: var(--font-body);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease), background 0.2s var(--ease);
+}
+.checker-field-input:focus,
+.checker-field-select:focus {
+  border-color: var(--primary-color);
+  background: #fff;
+  box-shadow: var(--shadow-glow);
+}
+
+.checker-add-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  align-self: flex-end;
+  height: 46px;
+  padding: 0 26px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, var(--status-yes), #0c8f63);
+  color: #fff;
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(11, 145, 99, 0.28);
+  transition: transform 0.15s var(--ease), filter 0.15s var(--ease), opacity 0.15s var(--ease);
+}
+.checker-add-btn:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-1px); }
+.checker-add-btn:disabled { opacity: 0.6; cursor: wait; }
+
+@media (max-width: 768px) {
+  .checker-input-row { flex-direction: column; align-items: stretch; }
+  .checker-add-btn { align-self: stretch; }
+  .profile-checker-container { padding: 18px 16px; }
+}
+/* ===== Video theme background ===== */
+/* Remove any older .video-bg-container rules; this replaces them. */
+.video-bg-layer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: -9999;
+  pointer-events: none;
+  background: #000;          /* plain dark canvas when there are no videos */
+  display: flex;
+  overflow: hidden;
+}
+
+.video-bg-layer video {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  object-fit: cover;         /* keeps the 9:16 clips filling their slot */
+  opacity: 0.35;
+  filter: blur(2px);
+  transform: scale(1.03);    /* hides the soft blurred edges */
+  pointer-events: none;
+}
+
+/* The layer sits behind everything, so page wrappers must not paint over it
+   while the video theme is active. Adjust the selectors if yours differ. */
+.dashboard-container {
+  background: transparent;
+}
+
+/* ===== Table: scrollbar corner (white square, bottom-right) ===== */
+.table-wrapper {
+  scrollbar-width: thin;                       /* Firefox */
+  scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+}
+.table-wrapper::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+  background: transparent;
+}
+.table-wrapper::-webkit-scrollbar-track {
+  background: transparent;
+}
+.table-wrapper::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+}
+.table-wrapper::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
+.table-wrapper::-webkit-scrollbar-corner {
+  background: transparent;                     /* this is the white square */
+}
+
+/* ===== Table: stray vertical lines between header cells ===== */
+/* The lines come from border-collapse on sticky headers, which leaves
+   sub-pixel gaps where the cell borders sit. */
+.profile-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.profile-table th {
+  border-left: 0;
+  border-right: 0;
+  background-clip: padding-box;
+  /* bottom divider drawn as a shadow so it stays attached to the sticky cell */
+  box-shadow: inset 0 -1px 0 var(--glass-border-strong, rgba(255, 255, 255, 0.15));
+}
+.profile-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+/* ===== EditableCell ===== */
+/* Display and edit states share box metrics so the row never changes height. */
+.editable-cell-display,
+.editable-cell-input {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 80px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font: inherit;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+.editable-cell-display {
+  cursor: cell;
+  user-select: none;            /* drag-fill shouldn't select text */
+  color: inherit;
+}
+.editable-cell-display:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.editable-cell-display:focus-visible {
+  outline: none;
+  border-color: var(--glass-border-strong, rgba(255, 255, 255, 0.3));
+}
+.editable-cell-placeholder {
+  opacity: 0.4;
+}
+
+/* Shared glass input look */
+.editable-cell-input {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--glass-border-strong, rgba(255, 255, 255, 0.25));
+  color: inherit;
+  outline: none;
+  backdrop-filter: blur(6px);
+}
+.editable-cell-input:focus {
+  border-color: var(--accent, rgba(255, 255, 255, 0.55));
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08);
+}
+.editable-cell-input.is-invalid {
+  border-color: #ff6b6b;
+  box-shadow: 0 0 0 2px rgba(255, 107, 107, 0.2);
+}
+
+/* Native dropdown list readable on dark glass */
+.editable-cell-select option {
+  background: #1a1a1f;
+  color: #fff;
+}
+
+/* No spinner arrows on number inputs (they change the cell width) */
+.editable-cell-input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.editable-cell-input[type='number']::-webkit-outer-spin-button,
+.editable-cell-input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+/* ===== Drag-fill pill ===== */
+/* Replaces the old .drag-fill-overlay-backdrop / .drag-fill-card / .drag-fill-* rules; delete those. */
+.drag-fill-pill {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 3000;                 /* above the context menu (2000) and modals */
+  pointer-events: none;          /* never blocks the drag */
+  user-select: none;
+
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: min(340px, calc(100vw - 16px));
+  padding: 6px 12px;
+  border-radius: 999px;
+
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  color: var(--text-primary, #fff);
+
+  /* fallback first, then the theme-aware version */
+  background: rgba(60, 20, 45, 0.7);
+  background: color-mix(in srgb, var(--accent, #ff4d97) 22%, rgba(20, 10, 20, 0.6));
+  border: 1px solid rgba(255, 77, 151, 0.55);
+  border: 1px solid color-mix(in srgb, var(--accent, #ff4d97) 55%, transparent);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  backdrop-filter: blur(12px) saturate(140%);
+  box-shadow:
+    0 6px 20px rgba(0, 0, 0, 0.35),
+    0 0 14px color-mix(in srgb, var(--accent, #ff4d97) 35%, transparent);
+
+  will-change: transform;
+}
+
+.drag-fill-pill-label,
+.drag-fill-pill-quote {
+  flex: none;                    /* these never shrink */
+}
+
+.drag-fill-pill-quote {
+  opacity: 0.6;
+}
+
+/* Long values truncate with an ellipsis; the quotes stay visible */
+.drag-fill-pill-value {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--accent, #ff4d97);
+  filter: brightness(1.35);      /* keeps the pink readable on the dark glass */
+}
