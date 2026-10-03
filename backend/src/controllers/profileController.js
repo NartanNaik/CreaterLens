@@ -1,6 +1,18 @@
 import * as profileService from "../services/profileService.js";
 import { db } from "../config/firebase.js"; // Injected to safely handle DB calls natively
 
+// Instagram handles: letters, numbers, periods, underscores, max 30 chars
+const HANDLE_REGEX = /^[A-Za-z0-9._]{1,30}$/;
+
+// Fields clients must never be able to overwrite through PATCH/POST
+const PROTECTED_FIELDS = ["id", "createdAt", "updatedAt"];
+
+const NUMERIC_FIELDS = ["totalFollowers", "avgViewsPerWeek", "avgLikes", "avgComments"];
+const TRIMMED_STRING_FIELDS = ["contact", "nation", "skinTone", "bodyType", "reelType", "specialPart", "ageRange", "status", "notes", "category"];
+
+const MAX_MASS_UPLOAD_ITEMS = 5000;
+const MAX_MASS_UPLOAD_CHARS = 500000;
+
 const extractCleanUsername = (raw) => {
   if (!raw || typeof raw !== "string") return "";
   let clean = raw.trim();
@@ -9,11 +21,22 @@ const extractCleanUsername = (raw) => {
     try {
       const urlObj = new URL(clean.startsWith("http") ? clean : `https://${clean}`);
       const segments = urlObj.pathname.split("/").filter(Boolean);
-      if (segments.length > 0 && segments[0] !== "reel" && segments[0] !== "p" && segments[0] !== "stories") {
-        clean = segments[0];
+
+      if (segments.length === 0) return "";
+
+      const first = segments[0];
+      if (first === "stories") {
+        // instagram.com/stories/<username>/<id>
+        clean = segments[1] || "";
+      } else if (first === "reel" || first === "reels" || first === "p" || first === "tv") {
+        // A post/reel link doesn't contain the account handle. It used to leak through
+        // as a "username" containing the whole URL.
+        return "";
+      } else {
+        clean = first;
       }
     } catch {
-      // Fallback if URL parsing fails
+      return "";
     }
   }
 
@@ -21,22 +44,32 @@ const extractCleanUsername = (raw) => {
   return clean;
 };
 
+const isValidHandle = (handle) => HANDLE_REGEX.test(handle);
+
+const toCount = (value) => Math.max(0, parseInt(value, 10) || 0);
+
 const sanitizeProfileData = (data = {}) => {
   const sanitized = { ...data };
 
-  if (sanitized.username) {
+  // Never let the client set server-managed fields (mass-assignment protection)
+  PROTECTED_FIELDS.forEach((field) => delete sanitized[field]);
+
+  if (typeof sanitized.username === "string") {
     sanitized.username = extractCleanUsername(sanitized.username);
   }
 
-  if (sanitized.totalFollowers !== undefined) {
-    sanitized.totalFollowers = Math.max(0, parseInt(sanitized.totalFollowers, 10) || 0);
-  }
-  if (sanitized.avgViewsPerWeek !== undefined) {
-    sanitized.avgViewsPerWeek = Math.max(0, parseInt(sanitized.avgViewsPerWeek, 10) || 0);
+  // avgLikes / avgComments were previously not sanitized at all
+  NUMERIC_FIELDS.forEach((field) => {
+    if (sanitized[field] !== undefined) {
+      sanitized[field] = toCount(sanitized[field]);
+    }
+  });
+
+  if (sanitized.playable !== undefined) {
+    sanitized.playable = sanitized.playable === true || sanitized.playable === "true";
   }
 
-  // THE FIX: Added "contact" to the whitelist so it actually saves to the database
-  ["contact", "nation", "skinTone", "bodyType", "reelType", "specialPart", "ageRange", "status", "notes"].forEach((field) => {
+  TRIMMED_STRING_FIELDS.forEach((field) => {
     if (typeof sanitized[field] === "string") {
       sanitized[field] = sanitized[field].trim();
     }
@@ -45,15 +78,27 @@ const sanitizeProfileData = (data = {}) => {
   return sanitized;
 };
 
+// Firestore Timestamps serialize to { _seconds, _nanoseconds }, which breaks sorting and
+// date display on the frontend. Convert them to ISO strings.
+const serializeDoc = (doc) => {
+  const out = {};
+  for (const [key, value] of Object.entries(doc.data())) {
+    out[key] = value && typeof value.toDate === "function" ? value.toDate().toISOString() : value;
+  }
+  return { ...out, id: doc.id }; // doc id always wins
+};
+
+const noCache = (res) => res.set("Cache-Control", "no-store");
+
 export const checkProfile = async (req, res) => {
   try {
-    const { username } = req.body;
+    const { username } = req.body || {};
     if (!username || typeof username !== "string" || !username.trim()) {
       return res.status(400).json({ success: false, error: "A valid username or URL is required." });
     }
 
     const cleanUsername = extractCleanUsername(username);
-    if (!cleanUsername) {
+    if (!cleanUsername || !isValidHandle(cleanUsername)) {
       return res.status(400).json({ success: false, error: "Unable to extract a valid username handle." });
     }
 
@@ -73,7 +118,7 @@ export const addProfile = async (req, res) => {
 
     const sanitizedData = sanitizeProfileData(req.body);
 
-    if (!sanitizedData.username) {
+    if (!sanitizedData.username || !isValidHandle(sanitizedData.username)) {
       return res.status(400).json({ success: false, error: "Valid username is required." });
     }
 
@@ -88,26 +133,26 @@ export const addProfile = async (req, res) => {
   }
 };
 
-// THE FIX 1: Hard limits to prevent massive data dumps on page load
+// Returns the full collection so "Copy All" captures everything.
+// NOTE: combining where("category") with orderBy("createdAt") needs a Firestore composite
+// index; if the category filter returns a 500, the error log contains a link to create it.
+// Also note: Firestore's orderBy silently excludes documents that have no createdAt field.
 export const getProfiles = async (req, res) => {
   try {
-    // We cap the fetch at 500 rows to guarantee we never exhaust the read quota from a simple refresh
-    const limit = req.query.limit ? parseInt(req.query.limit, 10) : 500;
-    const category = req.query.category;
+    const category = typeof req.query.category === "string" ? req.query.category : "";
 
-    let query = db.collection("profiles").orderBy("createdAt", "desc").limit(limit);
+    let query = db.collection("profiles");
 
     if (category) {
       query = query.where("category", "==", category);
     }
 
-    const snapshot = await query.get();
-    const profiles = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
+    query = query.orderBy("createdAt", "desc");
 
-    // Wrapped in 'data' to match your api.js expectations
+    const snapshot = await query.get();
+    const profiles = snapshot.docs.map(serializeDoc);
+
+    noCache(res); // avoid stale lists coming back as 304s after edits
     return res.status(200).json({
       success: true,
       data: profiles
@@ -118,12 +163,13 @@ export const getProfiles = async (req, res) => {
   }
 };
 
-// THE FIX 2: True Firestore Aggregation (Costs 1 Read total)
+// True Firestore aggregation (counts without reading every document)
 export const getGlobalCount = async (req, res) => {
   try {
     const snapshot = await db.collection("profiles").count().get();
     const count = snapshot.data().count;
-    
+
+    noCache(res);
     return res.status(200).json({
       success: true,
       count: count
@@ -148,6 +194,17 @@ export const updateProfile = async (req, res) => {
     }
 
     const sanitizedUpdate = sanitizeProfileData(updateData);
+
+    // If a username was sent, it must still be valid after cleaning (previously a
+    // junk value could blank out or corrupt the username).
+    if ("username" in sanitizedUpdate && !isValidHandle(sanitizedUpdate.username || "")) {
+      return res.status(400).json({ success: false, error: "Valid username is required." });
+    }
+
+    if (Object.keys(sanitizedUpdate).length === 0) {
+      return res.status(400).json({ success: false, error: "No updatable fields provided." });
+    }
+
     const updatedProfile = await profileService.updateProfile(profileId.trim(), sanitizedUpdate);
 
     return res.status(200).json({ success: true, message: "Profile updated successfully.", profile: updatedProfile });
@@ -171,15 +228,26 @@ export const deleteProfile = async (req, res) => {
     return res.status(200).json({ success: true, message: "Profile deleted successfully." });
   } catch (error) {
     console.error("Error deleting profile:", error);
+    if (error.message === "Profile not found.") {
+      return res.status(404).json({ success: false, error: error.message });
+    }
     return res.status(500).json({ success: false, error: "Internal server error." });
   }
 };
 
 export const massUpload = async (req, res) => {
   try {
-    const { usernames } = req.body;
+    const { usernames } = req.body || {};
     if (!usernames || (typeof usernames !== "string" && !Array.isArray(usernames))) {
       return res.status(400).json({ success: false, error: "Usernames string or list is required." });
+    }
+
+    // Guard against enormous payloads
+    if (Array.isArray(usernames) && usernames.length > MAX_MASS_UPLOAD_ITEMS) {
+      return res.status(413).json({ success: false, error: `Maximum ${MAX_MASS_UPLOAD_ITEMS} usernames per upload.` });
+    }
+    if (typeof usernames === "string" && usernames.length > MAX_MASS_UPLOAD_CHARS) {
+      return res.status(413).json({ success: false, error: "Upload text is too large." });
     }
 
     const result = await profileService.massUploadProfiles(usernames);
