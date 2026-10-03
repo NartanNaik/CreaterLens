@@ -35,7 +35,8 @@ const sanitizeProfileData = (data = {}) => {
     sanitized.avgViewsPerWeek = Math.max(0, parseInt(sanitized.avgViewsPerWeek, 10) || 0);
   }
 
-  ["nation", "skinTone", "bodyType", "reelType", "specialPart", "ageRange", "status", "notes"].forEach((field) => {
+  // THE FIX: Added "contact" to the whitelist so it actually saves to the database
+  ["contact", "nation", "skinTone", "bodyType", "reelType", "specialPart", "ageRange", "status", "notes"].forEach((field) => {
     if (typeof sanitized[field] === "string") {
       sanitized[field] = sanitized[field].trim();
     }

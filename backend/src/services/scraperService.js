@@ -5,13 +5,24 @@ import axios from "axios";
 const RAPID_API_KEY = process.env.RAPIDAPI_KEY || "";
 const RAPID_API_HOST = process.env.RAPIDAPI_HOST || "instagram-scraper-api2.p.rapidapi.com";
 
+// 1. Enhanced URL Cleaner: Aggressively strips mobile `igsh` tracking tags and trailing slashes
 const cleanInstagramUrl = (rawUrl) => {
+  if (!rawUrl || typeof rawUrl !== "string") return "";
   try {
-    const parsed = new URL(rawUrl);
-    return `${parsed.origin}${parsed.pathname}`;
+    const parsed = new URL(rawUrl.trim());
+    return `${parsed.origin}${parsed.pathname}`.replace(/\/$/, "");
   } catch {
-    return rawUrl.split("?")[0];
+    return rawUrl.split("?")[0].trim().replace(/\/$/, "");
   }
+};
+
+// 2. Fallback Extractor: If a user shares a raw profile link instead of a reel (which crashes the post API), rip the username directly from the URL.
+const attemptFallbackUsername = (url) => {
+  const profileMatch = url.match(/(?:instagram\.com|instagr\.am)\/([A-Za-z0-9_.]+)/);
+  if (profileMatch && !['p', 'reel', 'tv', 'stories', 'explore'].includes(profileMatch[1])) {
+    return profileMatch[1];
+  }
+  return "Unknown";
 };
 
 /**
@@ -20,6 +31,7 @@ const cleanInstagramUrl = (rawUrl) => {
  */
 export const extractBasicInfo = async (reelUrl) => {
   const cleanUrl = cleanInstagramUrl(reelUrl);
+  const fallbackUser = attemptFallbackUsername(cleanUrl);
   
   try {
     if (!RAPID_API_KEY) {
@@ -36,16 +48,24 @@ export const extractBasicInfo = async (reelUrl) => {
     });
 
     const data = response.data?.data || {};
+    
+    // Safely extract username: Try API first, then regex fallback
+    const username = data.user?.username || fallbackUser;
 
     return {
       url: cleanUrl,
-      usernames: data.user ? [data.user.username] : [],
+      usernames: username !== "Unknown" ? [username] : [],
       thumbnailUrl: data.thumbnail_url || "",
       caption: data.caption?.text || ""
     };
   } catch (error) {
-    console.warn(`⚠️ [Scraper API] Fast extract failed for ${cleanUrl}.`);
-    return { url: cleanUrl, usernames: [], thumbnailUrl: "", caption: "" };
+    console.warn(`⚠️ [Scraper API] Fast extract failed for ${cleanUrl}. Falling back to Regex.`);
+    return { 
+      url: cleanUrl, 
+      usernames: fallbackUser !== "Unknown" ? [fallbackUser] : [], 
+      thumbnailUrl: "", 
+      caption: "" 
+    };
   }
 };
 
@@ -55,6 +75,7 @@ export const extractBasicInfo = async (reelUrl) => {
  */
 export const fetchFullReelMedia = async (reelUrl, specificUsername = "") => {
   const cleanUrl = cleanInstagramUrl(reelUrl);
+  const fallbackUser = specificUsername || attemptFallbackUsername(cleanUrl);
   
   try {
     if (!RAPID_API_KEY) {
@@ -71,7 +92,7 @@ export const fetchFullReelMedia = async (reelUrl, specificUsername = "") => {
     });
 
     const data = response.data?.data || {};
-    const trueUsername = specificUsername || data.user?.username || "";
+    const trueUsername = data.user?.username || fallbackUser;
     
     let finalCaption = data.caption?.text || "";
 
@@ -93,6 +114,12 @@ export const fetchFullReelMedia = async (reelUrl, specificUsername = "") => {
     };
   } catch (error) {
     console.error(`❌ [Scraper API] Deep media fetch failed:`, error.message);
-    return { url: cleanUrl, username: specificUsername || "", caption: "", thumbnailUrl: "", videoUrl: "" };
+    return { 
+      url: cleanUrl, 
+      username: fallbackUser !== "Unknown" ? fallbackUser : "", 
+      caption: "", 
+      thumbnailUrl: "", 
+      videoUrl: "" 
+    };
   }
 };

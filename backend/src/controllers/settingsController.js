@@ -83,6 +83,42 @@ export const addColumn = async (req, res) => {
     }
 };
 
+export const updateColumn = async (req, res) => {
+    try {
+        const { columnId, name, options } = req.body;
+        
+        if (!columnId || typeof columnId !== "string" || !columnId.trim()) {
+            return res.status(400).json({
+                success: false,
+                error: "A valid columnId is required for updating."
+            });
+        }
+
+        const updateData = {};
+        if (name && typeof name === "string" && name.trim()) {
+            updateData.name = name.trim();
+        }
+        
+        if (Array.isArray(options)) {
+            updateData.options = [...new Set(options.map(opt => typeof opt === "string" ? opt.trim() : "").filter(Boolean))];
+        }
+
+        const updatedColumn = await settingsService.updateCustomColumn(columnId.trim(), updateData);
+        
+        return res.status(200).json({
+            success: true,
+            message: "Column updated successfully.",
+            column: updatedColumn
+        });
+    } catch (error) {
+        console.error("Error updating column:", error);
+        return res.status(500).json({
+            success: false,
+            error: "Internal server error."
+        });
+    }
+};
+
 export const deleteColumn = async (req, res) => {
     try {
         const { columnId } = req.body;
@@ -94,7 +130,6 @@ export const deleteColumn = async (req, res) => {
             });
         }
 
-        // Pass a strict object to the service to prevent object injection
         await settingsService.deleteCustomColumn({ columnId: columnId.trim() });
         
         return res.status(200).json({

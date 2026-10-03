@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useOutletContext } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
 import api from '../services/api';
 import GarbageEater from './GarbageEater';
 
+// --- Clean SVG Icons ---
 const LayersIcon = () => (
   <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
@@ -10,14 +12,12 @@ const LayersIcon = () => (
     <polyline points="2 12 12 17 22 12"></polyline>
   </svg>
 );
-
 const ArrowLeftIcon = () => (
   <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}>
     <line x1="19" y1="12" x2="5" y2="12"></line>
     <polyline points="12 19 5 12 12 5"></polyline>
   </svg>
 );
-
 const ExternalLinkIcon = () => (
   <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
@@ -25,19 +25,16 @@ const ExternalLinkIcon = () => (
     <line x1="10" y1="14" x2="21" y2="3"></line>
   </svg>
 );
-
 const SparkleIcon = () => (
   <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"></path>
   </svg>
 );
-
 const CheckIcon = () => (
   <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="20 6 9 17 4 12"></polyline>
   </svg>
 );
-
 const TrashIcon = () => (
   <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="3 6 5 6 21 6"></polyline>
@@ -46,7 +43,6 @@ const TrashIcon = () => (
     <line x1="14" y1="11" x2="14" y2="17"></line>
   </svg>
 );
-
 const RefreshIcon = () => (
   <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="23 4 23 10 17 10"></polyline>
@@ -54,23 +50,45 @@ const RefreshIcon = () => (
     <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
   </svg>
 );
-
 const SearchIcon = () => (
   <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-faint)' }}>
     <circle cx="11" cy="11" r="8"></circle>
     <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
   </svg>
 );
+const PencilIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6, cursor: 'pointer', flexShrink: 0 }}>
+    <path d="M12 20h9"></path>
+    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+  </svg>
+);
 
 export default function StagingQueue() {
   const navigate = useNavigate();
+  // Read video theme state from App.jsx Layout
+  const { isVideoTheme } = useOutletContext() || { isVideoTheme: false };
+  
   const [stagedItems, setStagedItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [searchTerm, setSearchTerm] = useState("");
+  const [bgVideoCount, setBgVideoCount] = useState(5);
   
   const [processingIds, setProcessingIds] = useState(new Set()); 
   const isAutoProcessingRef = useRef(false);
+
+  // Dynamic Background Video Calculator
+  useEffect(() => {
+    const calculateVideoCount = () => {
+      const videoWidth = window.innerHeight * (9 / 16);
+      const count = Math.ceil(window.innerWidth / videoWidth);
+      setBgVideoCount(count || 5);
+    };
+
+    calculateVideoCount();
+    window.addEventListener('resize', calculateVideoCount);
+    return () => window.removeEventListener('resize', calculateVideoCount);
+  }, []);
 
   useEffect(() => {
     fetchStagingQueue(true);
@@ -84,15 +102,10 @@ export default function StagingQueue() {
       
       if (pendingItem && !isAutoProcessingRef.current) {
         isAutoProcessingRef.current = true; 
-        
         await handleProcessAISequence(pendingItem.id, pendingItem.status);
-        
-        setTimeout(() => {
-          isAutoProcessingRef.current = false;
-        }, 6000);
+        setTimeout(() => { isAutoProcessingRef.current = false; }, 6000);
       }
     };
-
     processNextPendingItem();
   }, [stagedItems, processingIds]);
 
@@ -103,6 +116,7 @@ export default function StagingQueue() {
       setStagedItems(Array.isArray(data) ? data : data.data || []);
     } catch (error) {
       console.error("Failed to fetch staging queue:", error);
+      toast.error("Failed to fetch queue.");
     } finally {
       if (showLoader) setLoading(false);
     }
@@ -124,6 +138,7 @@ export default function StagingQueue() {
       const cleanedName = newName.trim();
       setStagedItems(prev => prev.map(item => item.id === id ? { ...item, username: cleanedName } : item));
       handleProcessAISequence(id, 'pending', cleanedName);
+      toast.success("Username updated!");
     }
   };
 
@@ -148,15 +163,13 @@ export default function StagingQueue() {
       }
     } catch (error) {
       if (error.response && error.response.status === 404) {
-        // RACE CONDITION CAUGHT: The item was already approved/deleted by you.
-        // Silently remove it from the UI without throwing an error.
         setStagedItems(prev => prev.filter(item => item.id !== id));
       } else {
-        console.warn("Processing encountered an issue for item:", id, error);
         if (error.response && error.response.status === 429) {
           setStagedItems(prev => prev.map(item => item.id === id ? { ...item, status: 'pending' } : item));
         } else {
           setStagedItems(prev => prev.map(item => item.id === id ? { ...item, status: 'failed' } : item));
+          toast.error("AI Analysis Failed.");
         }
       }
     } finally {
@@ -171,14 +184,11 @@ export default function StagingQueue() {
     try {
       await api.post(`/staging/${id}/approve`);
       setStagedItems(prev => prev.filter(item => item.id !== id));
-      setSelectedIds(prev => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
+      setSelectedIds(prev => { const next = new Set(prev); next.delete(id); return next; });
+      toast.success("Profile approved!");
     } catch (error) {
       console.error("Failed to approve staged item:", error);
-      alert("Approval failed. Please try again.");
+      toast.error("Approval failed. Please try again.");
     } finally {
       setRowProcessing(id, false);
     }
@@ -191,19 +201,16 @@ export default function StagingQueue() {
     try {
       await api.delete(`/staging/${id}`);
       setStagedItems(prev => prev.filter(item => item.id !== id));
-      setSelectedIds(prev => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
+      setSelectedIds(prev => { const next = new Set(prev); next.delete(id); return next; });
+      toast.success("Item deleted from queue.");
     } catch (error) {
       console.error("Failed to delete staged item:", error);
+      toast.error("Failed to delete item.");
     } finally {
       setRowProcessing(id, false);
     }
   };
 
-  // Instant local filtering based on search text
   const filteredItems = useMemo(() => {
     if (!searchTerm) return stagedItems;
     const lower = searchTerm.toLowerCase();
@@ -225,11 +232,8 @@ export default function StagingQueue() {
   const handleToggleSelect = (id) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
@@ -241,35 +245,35 @@ export default function StagingQueue() {
       await api.post('/staging/bulk-approve', { ids: Array.from(selectedIds) });
       setStagedItems(prev => prev.filter(item => !selectedIds.has(item.id)));
       setSelectedIds(new Set());
+      toast.success("Selected items approved!");
     } catch (error) {
       console.error("Bulk approval failed:", error);
+      toast.error("Bulk approval failed.");
     } finally {
       setLoading(false);
     }
   };
 
-const handleApproveAll = async () => {
+  const handleApproveAll = async () => {
     if (stagedItems.length === 0) return;
     if (!window.confirm(`Are you sure you want to approve ALL ${stagedItems.length} profiles? This will process in batches.`)) return;
     
     setLoading(true);
-    
-    // 1. Snapshot all IDs and instantly kill the UI state so the AI loop stops
     const allIds = stagedItems.map(item => item.id);
     setStagedItems([]);
     setSelectedIds(new Set());
-
     const BATCH_SIZE = 100;
 
     try {
-      // 2. Loop through the array in chunks of 100 and send them sequentially
       for (let i = 0; i < allIds.length; i += BATCH_SIZE) {
         const batch = allIds.slice(i, i + BATCH_SIZE);
         await api.post('/staging/bulk-approve', { ids: batch });
       }
+      toast.success("All items successfully approved!");
     } catch (error) {
       console.error("A batch failed during Approve All:", error);
-      fetchStagingQueue(false); // Restore UI to show whatever failed to process
+      toast.error("A batch failed to process.");
+      fetchStagingQueue(false); 
     } finally {
       setLoading(false);
     }
@@ -280,22 +284,20 @@ const handleApproveAll = async () => {
     if (!window.confirm(`Are you sure you want to PERMANENTLY DELETE ALL ${stagedItems.length} items?`)) return;
     
     setLoading(true);
-    
-    // 1. Snapshot and kill UI
     const allIds = stagedItems.map(item => item.id);
     setStagedItems([]);
     setSelectedIds(new Set());
-
     const BATCH_SIZE = 100;
 
     try {
-      // 2. Loop and delete in chunks
       for (let i = 0; i < allIds.length; i += BATCH_SIZE) {
         const batch = allIds.slice(i, i + BATCH_SIZE);
         await api.post('/staging/bulk-delete', { ids: batch });
       }
+      toast.success("All items permanently deleted.");
     } catch (error) {
       console.error("A batch failed during Delete All:", error);
+      toast.error("A batch failed to delete.");
       fetchStagingQueue(false);
     } finally {
       setLoading(false);
@@ -309,12 +311,34 @@ const handleApproveAll = async () => {
   };
 
   return (
-    <div className="staging-page-container">
-      <div className="staging-header-panel glass-panel">
+    // Updated Main Wrapper for scroll lock
+    <div className="staging-page-container relative h-full flex flex-col" style={{ height: 'calc(100vh - 70px)' }}>
+      
+      {/* DYNAMIC VIDEO BACKGROUND */}
+      {isVideoTheme && (
+        <div className="fixed inset-0 z-[-1] flex overflow-hidden opacity-30 pointer-events-none" style={{ background: '#000' }}>
+          {filteredItems
+            .filter(p => p.videoPreviewUrl || p.url)
+            .slice(0, bgVideoCount)
+            .map((p, i) => (
+              <video 
+                key={i} 
+                src={p.videoPreviewUrl || p.url} 
+                autoPlay 
+                loop 
+                muted 
+                playsInline
+                className="h-full object-cover flex-1 opacity-70 filter blur-[2px]"
+                style={{ minWidth: `${window.innerHeight * (9/16)}px` }}
+              />
+          ))}
+        </div>
+      )}
+
+      {/* FIXED Header Panel */}
+      <div className="staging-header-panel glass-panel flex-shrink-0" style={{ zIndex: 20 }}>
         <div className="staging-header-left">
-          <div className="staging-icon-wrap">
-            <LayersIcon />
-          </div>
+          <div className="staging-icon-wrap"><LayersIcon /></div>
           <div>
             <h1 className="staging-title">Staging Queue</h1>
             <p className="staging-subtitle">Review and approve ingested profiles before pushing to live production.</p>
@@ -322,57 +346,34 @@ const handleApproveAll = async () => {
         </div>
 
         <div className="staging-header-actions">
-          {/* SEARCH BAR */}
           <div style={{ position: 'relative', marginRight: '8px' }}>
             <SearchIcon />
             <input 
               type="text" 
-              placeholder="Search ID, username, or URL..." 
+              placeholder="Search ID, username..." 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               style={{
-                padding: '8px 12px 8px 32px',
-                borderRadius: '6px',
-                border: '1px solid var(--border-light)',
-                backgroundColor: 'var(--surface-sunken)',
-                color: 'var(--text-main)',
-                fontSize: '13px',
-                outline: 'none',
-                width: '240px'
+                padding: '8px 12px 8px 32px', borderRadius: '6px',
+                border: '1px solid var(--border-light)', backgroundColor: 'var(--surface-sunken)',
+                color: 'var(--text-main)', fontSize: '13px', outline: 'none', width: '240px'
               }}
             />
           </div>
 
-          <button 
-            onClick={() => navigate('/dashboard')}
-            className="staging-refresh-btn"
-            style={{ backgroundColor: 'var(--surface-sunken)', color: 'var(--text-main)', border: '1px solid var(--border-light)' }}
-          >
+          <button onClick={() => navigate('/dashboard')} className="staging-refresh-btn" style={{ backgroundColor: 'var(--surface-sunken)', color: 'var(--text-main)', border: '1px solid var(--border-light)' }}>
             <ArrowLeftIcon /> Back to Dashboard
           </button>
           
-          <button 
-            onClick={() => fetchStagingQueue(true)}
-            disabled={loading}
-            className="staging-refresh-btn"
-          >
+          <button onClick={() => fetchStagingQueue(true)} disabled={loading} className="staging-refresh-btn">
             <RefreshIcon /> {loading ? 'Refreshing...' : 'Refresh Queue'}
           </button>
 
           <div style={{ borderLeft: '1px solid var(--border-light)', paddingLeft: '12px', marginLeft: '4px', display: 'flex', gap: '8px' }}>
-            <button 
-              onClick={handleApproveAll}
-              disabled={loading || stagedItems.length === 0}
-              className="staging-bulk-approve-btn"
-            >
+            <button onClick={handleApproveAll} disabled={loading || stagedItems.length === 0} className="staging-bulk-approve-btn">
               <CheckIcon /> Approve All
             </button>
-            <button 
-              onClick={handleDeleteAll}
-              disabled={loading || stagedItems.length === 0}
-              className="action-btn delete-btn"
-              style={{ backgroundColor: 'var(--surface-raised)' }}
-            >
+            <button onClick={handleDeleteAll} disabled={loading || stagedItems.length === 0} className="action-btn delete-btn" style={{ backgroundColor: 'var(--surface-raised)' }}>
               <TrashIcon /> Delete All
             </button>
           </div>
@@ -382,19 +383,18 @@ const handleApproveAll = async () => {
       <GarbageEater onSuccess={() => fetchStagingQueue(false)} />
 
       {selectedIds.size > 0 && (
-        <div style={{ marginBottom: '16px', padding: '12px 16px', backgroundColor: 'var(--surface-raised)', borderRadius: '8px', border: '1px solid var(--border-accent)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ marginBottom: '16px', padding: '12px 16px', backgroundColor: 'var(--surface-raised)', borderRadius: '8px', border: '1px solid var(--border-accent)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
           <span style={{ fontWeight: '500', color: 'var(--text-main)' }}>{selectedIds.size} items selected</span>
-          <button onClick={handleBulkApprove} className="staging-bulk-approve-btn">
-            <CheckIcon /> Approve Selected
-          </button>
+          <button onClick={handleBulkApprove} className="staging-bulk-approve-btn"><CheckIcon /> Approve Selected</button>
         </div>
       )}
 
-      <div className="table-wrapper glass-panel">
-        <table className="profile-table staging-table">
+      {/* SCROLLABLE Table Wrapper */}
+      <div className="table-wrapper glass-panel flex-1" style={{ overflowY: 'auto', overflowX: 'auto', border: '1px solid var(--border-light)', borderRadius: '12px' }}>
+        <table className="profile-table staging-table w-full text-left" style={{ borderCollapse: 'collapse' }}>
           <thead>
             <tr>
-              <th className="staging-col-checkbox">
+              <th className="staging-col-checkbox" style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--surface-color, #fff)', borderBottom: '2px solid var(--border-light)' }}>
                 <input 
                   type="checkbox"
                   checked={filteredItems.length > 0 && selectedIds.size === filteredItems.length}
@@ -402,31 +402,31 @@ const handleApproveAll = async () => {
                   className="staging-checkbox"
                 />
               </th>
-              <th>Username</th>
-              <th>Link</th>
-              <th>Nation</th>
-              <th>Skin Tone</th>
-              <th>Body Type</th>
-              <th>Reel Type</th>
-              <th>Special Part</th>
-              <th>Age</th>
-              <th>Followers</th>
-              <th>Avg Views</th>
-              <th>Avg Likes</th>
-              <th>Avg Comments</th>
-              <th className="staging-col-actions" style={{ minWidth: '320px' }}>Actions</th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--surface-color, #fff)', borderBottom: '2px solid var(--border-light)' }}>Username</th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--surface-color, #fff)', borderBottom: '2px solid var(--border-light)' }}>Link</th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--surface-color, #fff)', borderBottom: '2px solid var(--border-light)' }}>Contact</th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--surface-color, #fff)', borderBottom: '2px solid var(--border-light)' }}>Nation</th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--surface-color, #fff)', borderBottom: '2px solid var(--border-light)' }}>Skin Tone</th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--surface-color, #fff)', borderBottom: '2px solid var(--border-light)' }}>Body Type</th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--surface-color, #fff)', borderBottom: '2px solid var(--border-light)' }}>Reel Type</th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--surface-color, #fff)', borderBottom: '2px solid var(--border-light)' }}>Special Part</th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--surface-color, #fff)', borderBottom: '2px solid var(--border-light)' }}>Age</th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--surface-color, #fff)', borderBottom: '2px solid var(--border-light)' }}>Followers</th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--surface-color, #fff)', borderBottom: '2px solid var(--border-light)' }}>Avg Views</th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--surface-color, #fff)', borderBottom: '2px solid var(--border-light)' }}>Avg Likes</th>
+              <th style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--surface-color, #fff)', borderBottom: '2px solid var(--border-light)' }}>Avg Comments</th>
+              <th className="staging-col-actions" style={{ minWidth: '320px', position: 'sticky', top: 0, zIndex: 10, background: 'var(--surface-color, #fff)', borderBottom: '2px solid var(--border-light)' }}>Actions</th>
             </tr>
           </thead>
           
           <tbody>
             {filteredItems.length === 0 ? (
               <tr>
-                <td colSpan="14" className="staging-empty-row">
+                <td colSpan="15" className="staging-empty-row">
                   {loading ? "Loading staging queue..." : searchTerm ? "No items match your search." : "No profiles currently waiting in the staging queue."}
                 </td>
               </tr>
             ) : (
-              // DOM NODE LIMITER: Render only 50 rows at a time to eliminate scrolling lag
               filteredItems.slice(0, 50).map((item) => {
                 const isSelected = selectedIds.has(item.id);
                 const isProcessingRow = processingIds.has(item.id);
@@ -434,44 +434,37 @@ const handleApproveAll = async () => {
                 const isFailed = item.status === 'failed';
                 
                 return (
-                  <tr key={item.id} className={isSelected ? 'staging-row-selected' : ''} style={{ opacity: isProcessingRow ? 0.6 : 1, pointerEvents: isProcessingRow ? 'none' : 'auto' }}>
+                  <tr key={item.id} className={isSelected ? 'staging-row-selected' : ''} style={{ opacity: isProcessingRow ? 0.6 : 1, pointerEvents: isProcessingRow ? 'none' : 'auto', borderBottom: '1px solid var(--border-light)' }}>
                     <td>
-                      <input 
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => handleToggleSelect(item.id)}
-                        className="staging-checkbox"
-                      />
+                      <input type="checkbox" checked={isSelected} onChange={() => handleToggleSelect(item.id)} className="staging-checkbox" />
                     </td>
                     
-                    <td className="staging-username-cell">
+                    {/* Updated Username Cell with SVG Pencil */}
+                    <td className="staging-username-cell group">
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <span style={{ fontWeight: item.username === 'Unknown' ? 'bold' : 'normal', color: item.username === 'Unknown' ? 'var(--accent-red)' : 'inherit' }}>
                           {item.username || 'Unknown'}
                         </span>
                         <button 
                           onClick={() => handleEditUsername(item.id, item.username)}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', color: 'var(--text-faint)', padding: 0 }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
                           title="Edit Username manually"
                         >
-                          ✎
+                          <PencilIcon />
                         </button>
                       </div>
                     </td>
                     
                     <td>
                       {item.url ? (
-                        <a 
-                          href={item.url} 
-                          target="_blank" 
-                          rel="noreferrer" 
-                          className="action-btn"
-                          style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 8px', backgroundColor: 'var(--surface-sunken)', border: '1px solid var(--border-light)', borderRadius: '4px' }}
-                        >
+                        <a href={item.url} target="_blank" rel="noreferrer" className="action-btn" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 8px', backgroundColor: 'var(--surface-sunken)', border: '1px solid var(--border-light)', borderRadius: '4px' }}>
                           <ExternalLinkIcon /> View
                         </a>
                       ) : '-'}
                     </td>
+
+                    {/* New Contact Column */}
+                    <td>{renderAttr(item.contact)}</td>
 
                     <td>{renderAttr(item.nation)}</td>
                     <td>{renderAttr(item.skinTone)}</td>
@@ -486,27 +479,13 @@ const handleApproveAll = async () => {
                     
                     <td>
                       <div className="staging-row-actions-group">
-                        <button 
-                          className="action-btn"
-                          style={{ backgroundColor: 'var(--surface-raised)', color: isFailed ? 'var(--accent-red)' : 'var(--text-main)', border: '1px solid var(--border-light)' }}
-                          onClick={() => handleProcessAISequence(item.id, item.status)}
-                          disabled={isProcessingRow}
-                          title="Force Manual AI Refresh"
-                        >
+                        <button className="action-btn" style={{ backgroundColor: 'var(--surface-raised)', color: isFailed ? 'var(--accent-red)' : 'var(--text-main)', border: '1px solid var(--border-light)' }} onClick={() => handleProcessAISequence(item.id, item.status)} disabled={isProcessingRow} title="Force Manual AI Refresh">
                           <SparkleIcon /> {isProcessingRow ? "Scanning..." : isFailed ? "Failed. Retry?" : isPendingAI ? "Waiting..." : "Re-Scan"}
                         </button>
-                        <button 
-                          className="action-btn staging-approve-btn"
-                          onClick={() => handleApprove(item.id)}
-                          disabled={isProcessingRow || isPendingAI}
-                        >
+                        <button className="action-btn staging-approve-btn" onClick={() => handleApprove(item.id)} disabled={isProcessingRow || isPendingAI}>
                           <CheckIcon /> Approve
                         </button>
-                        <button 
-                          className="action-btn delete-btn"
-                          onClick={() => handleDelete(item.id)}
-                          disabled={isProcessingRow}
-                        >
+                        <button className="action-btn delete-btn" onClick={() => handleDelete(item.id)} disabled={isProcessingRow}>
                           <TrashIcon /> Reject
                         </button>
                       </div>

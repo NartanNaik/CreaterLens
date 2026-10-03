@@ -27,13 +27,19 @@ export const shareReelController = async (req, res) => {
     const rawContent = `${url || ""} ${text || ""} ${title || ""}`.trim();
 
     if (!rawContent) {
-      return res.status(400).json({ success: false, error: "No share payload or URL provided." });
+      return res.status(400).json({ 
+        success: false, 
+        error: "No share payload or URL provided." 
+      });
     }
 
     const reelUrls = parseReelInput(rawContent);
 
     if (reelUrls.length === 0) {
-      return res.status(400).json({ success: false, error: "No valid Instagram reel links found in the submission." });
+      return res.status(400).json({ 
+        success: false, 
+        error: "No valid Instagram reel links found in the submission." 
+      });
     }
 
     const added = [];
@@ -71,6 +77,7 @@ export const shareReelController = async (req, res) => {
         const stagingDoc = {
           url: reelUrl,
           username: handle,
+          contact: "",
           thumbnailUrl: parsedMeta.thumbnailUrl || "",
           caption: parsedMeta.caption || "",
           status: "pending",
@@ -92,7 +99,10 @@ export const shareReelController = async (req, res) => {
     });
   } catch (error) {
     console.error("Error handling share target:", error);
-    return res.status(500).json({ success: false, error: "Internal server error." });
+    return res.status(500).json({ 
+      success: false, 
+      error: "Internal server error." 
+    });
   }
 };
 
@@ -101,7 +111,10 @@ export const bulkImportStagingItemsController = async (req, res) => {
     const { items } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ success: false, error: "No valid items provided for bulk import." });
+      return res.status(400).json({ 
+        success: false, 
+        error: "No valid items provided for bulk import." 
+      });
     }
 
     const added = [];
@@ -135,6 +148,7 @@ export const bulkImportStagingItemsController = async (req, res) => {
       const stagingDoc = {
         url: reelUrl,
         username: handle,
+        contact: "",
         thumbnailUrl: item.thumbnailUrl || "",
         caption: item.caption || "",
         status: "pending",
@@ -155,7 +169,10 @@ export const bulkImportStagingItemsController = async (req, res) => {
     });
   } catch (error) {
     console.error("Error in bulk import:", error);
-    return res.status(500).json({ success: false, error: "Internal server error during bulk import." });
+    return res.status(500).json({ 
+      success: false, 
+      error: "Internal server error during bulk import." 
+    });
   }
 };
 
@@ -179,7 +196,10 @@ export const getStagingQueueController = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching staging queue:", error);
-    return res.status(500).json({ success: false, error: "Internal server error." });
+    return res.status(500).json({ 
+      success: false, 
+      error: "Internal server error." 
+    });
   }
 };
 
@@ -190,13 +210,15 @@ export const processStagingItemController = async (req, res) => {
     const { username: customUsername } = req.body; 
 
     if (!id) {
-      return res.status(400).json({ success: false, error: "Staging item ID is required." });
+      return res.status(400).json({ 
+        success: false, 
+        error: "Staging item ID is required." 
+      });
     }
 
     const docRef = stagingCollection.doc(id);
     const docSnap = await docRef.get();
 
-    // THE FIX: Return 200 OK instead of 404 if the background loop hits a deleted ghost item
     if (!docSnap.exists) {
       return res.status(200).json({ 
         success: true, 
@@ -226,7 +248,10 @@ export const processStagingItemController = async (req, res) => {
         status: "scraping_done"
       });
 
-      return res.status(200).json({ success: true, message: "Scrape complete, ready for AI." });
+      return res.status(200).json({ 
+        success: true, 
+        message: "Scrape complete, ready for AI." 
+      });
     }
 
     if (step === 'analyze') {
@@ -253,7 +278,11 @@ export const processStagingItemController = async (req, res) => {
       } catch (aiError) {
         console.error(`[AI Fallback] Failed for ${targetData.username}. Reason: ${aiError.message}`);
         await docRef.update({ status: "failed" });
-        return res.status(500).json({ success: false, error: "AI limit reached or model failed.", status: "failed" });
+        return res.status(500).json({ 
+          success: false, 
+          error: "AI limit reached or model failed.", 
+          status: "failed" 
+        });
       }
 
       const accountType = (aiResult.accountType?.value || "").toLowerCase();
@@ -261,7 +290,11 @@ export const processStagingItemController = async (req, res) => {
       if (accountType.includes('male') || accountType.includes('brand')) {
         console.log(`[Auto-Filter] Automatically rejected ${targetData.username} (Classified as: ${accountType})`);
         await docRef.delete();
-        return res.status(200).json({ success: true, message: "Auto-deleted: Male or Brand detected", deleted: true });
+        return res.status(200).json({ 
+          success: true, 
+          message: "Auto-deleted: Male or Brand detected", 
+          deleted: true 
+        });
       }
 
       const updates = {
@@ -296,12 +329,18 @@ export const processStagingItemController = async (req, res) => {
       });
     }
 
-    return res.status(400).json({ success: false, error: "Missing valid ?step query parameter." });
+    return res.status(400).json({ 
+      success: false, 
+      error: "Missing valid ?step query parameter." 
+    });
 
   } catch (error) {
     console.error("CRITICAL Backend Error analyzing staging reel:", error);
     await stagingCollection.doc(req.params.id).update({ status: "failed" });
-    return res.status(500).json({ success: false, error: error.message || "Failed to analyze reel." });
+    return res.status(500).json({ 
+      success: false, 
+      error: error.message || "Failed to analyze reel." 
+    });
   }
 };
 
@@ -310,13 +349,15 @@ export const approveStagingItemController = async (req, res) => {
     const { id } = req.params;
 
     if (!id) {
-      return res.status(400).json({ success: false, error: "Staging item ID is required." });
+      return res.status(400).json({ 
+        success: false, 
+        error: "Staging item ID is required." 
+      });
     }
 
     const docRef = stagingCollection.doc(id);
     const docSnap = await docRef.get();
 
-    // THE FIX: Return 200 OK instead of 404 to silence the ghost errors
     if (!docSnap.exists) {
       return res.status(200).json({ 
         success: true, 
@@ -330,6 +371,7 @@ export const approveStagingItemController = async (req, res) => {
 
     const newProfile = {
       username: itemData.username || "Unknown",
+      contact: itemData.contact || "",
       nation: itemData.nation || "",
       skinTone: itemData.skinTone || "",
       bodyType: itemData.bodyType || "",
@@ -353,29 +395,33 @@ export const approveStagingItemController = async (req, res) => {
 
     await docRef.delete();
 
-    return res.status(200).json({ success: true, message: "Item approved and moved to main profile database." });
+    return res.status(200).json({ 
+      success: true, 
+      message: "Item approved and moved to main profile database." 
+    });
   } catch (error) {
     console.error("Error approving staging item:", error);
-    return res.status(500).json({ success: false, error: "Internal server error." });
+    return res.status(500).json({ 
+      success: false, 
+      error: "Internal server error." 
+    });
   }
 };
 
-/**
- * Bulk Approve items: Move multiple from Staging to Main Profiles Database (Parallelized for Vercel)
- */
 export const bulkApproveStagingItemsController = async (req, res) => {
   try {
     const { ids } = req.body;
 
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
-      return res.status(400).json({ success: false, error: "Array of staging item IDs is required." });
+      return res.status(400).json({ 
+        success: false, 
+        error: "Array of staging item IDs is required." 
+      });
     }
 
-    // Cap at 250 items per request to guarantee it finishes under Vercel's 10-second limit
     const chunkToProcess = ids.slice(0, 250);
     const addedCount = [];
 
-    // WAVE 1: Read all documents at the exact same time
     const readPromises = chunkToProcess.map(id => stagingCollection.doc(id).get());
     const docs = await Promise.all(readPromises);
 
@@ -387,6 +433,7 @@ export const bulkApproveStagingItemsController = async (req, res) => {
 
         const newProfile = {
           username: itemData.username || "Unknown",
+          contact: itemData.contact || "",
           nation: itemData.nation || "",
           skinTone: itemData.skinTone || "",
           bodyType: itemData.bodyType || "",
@@ -406,7 +453,6 @@ export const bulkApproveStagingItemsController = async (req, res) => {
           bloomFilterService.add(newProfile.username.toLowerCase());
         }
 
-        // WAVE 2 PREP: Queue up all writes and deletes to happen concurrently
         writePromises.push(profilesCollection.add(newProfile));
         writePromises.push(stagingCollection.doc(docSnap.id).delete());
         
@@ -414,7 +460,6 @@ export const bulkApproveStagingItemsController = async (req, res) => {
       }
     }
 
-    // WAVE 2 EXECUTE: Fire all writes/deletes at the exact same time
     await Promise.all(writePromises);
 
     return res.status(200).json({ 
@@ -424,24 +469,26 @@ export const bulkApproveStagingItemsController = async (req, res) => {
     });
   } catch (error) {
     console.error("Error bulk approving staging items:", error);
-    return res.status(500).json({ success: false, error: "Internal server error." });
+    return res.status(500).json({ 
+      success: false, 
+      error: "Internal server error." 
+    });
   }
 };
 
-/**
- * Bulk Delete items: Instantly wipe multiple/all items from the queue (Parallelized)
- */
 export const bulkDeleteStagingItemsController = async (req, res) => {
   try {
     const { ids } = req.body;
 
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
-      return res.status(400).json({ success: false, error: "Array of staging item IDs is required." });
+      return res.status(400).json({ 
+        success: false, 
+        error: "Array of staging item IDs is required." 
+      });
     }
 
     const chunkToProcess = ids.slice(0, 250);
 
-    // Fire all deletes concurrently
     const deletePromises = chunkToProcess.map(id => stagingCollection.doc(id).delete());
     await Promise.all(deletePromises);
 
@@ -451,7 +498,10 @@ export const bulkDeleteStagingItemsController = async (req, res) => {
     });
   } catch (error) {
     console.error("Error bulk deleting staging items:", error);
-    return res.status(500).json({ success: false, error: "Internal server error." });
+    return res.status(500).json({ 
+      success: false, 
+      error: "Internal server error." 
+    });
   }
 };
 
@@ -460,15 +510,23 @@ export const deleteStagingItemController = async (req, res) => {
     const { id } = req.params;
 
     if (!id) {
-      return res.status(400).json({ success: false, error: "Staging item ID is required." });
+      return res.status(400).json({ 
+        success: false, 
+        error: "Staging item ID is required." 
+      });
     }
 
-    // Firestore .delete() naturally succeeds even if the document does not exist, so no exists check is needed here
     await stagingCollection.doc(id).delete();
 
-    return res.status(200).json({ success: true, message: "Item removed from staging queue." });
+    return res.status(200).json({ 
+      success: true, 
+      message: "Item removed from staging queue." 
+    });
   } catch (error) {
     console.error("Error deleting staging item:", error);
-    return res.status(500).json({ success: false, error: "Internal server error." });
+    return res.status(500).json({ 
+      success: false, 
+      error: "Internal server error." 
+    });
   }
 };
