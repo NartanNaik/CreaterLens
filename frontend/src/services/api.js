@@ -1,15 +1,18 @@
 import axios from "axios";
 
+const API_URL = import.meta.env.VITE_API_URL || "";
+
 const api = axios.create({
-  baseURL: `${import.meta.env.VITE_API_URL}/api`
+  baseURL: `${API_URL}/api`,
+  timeout: 30000
 });
 
-// --- THE FIX: State variables to manage the refresh queue ---
+// State for the token-refresh queue
 let isRefreshing = false;
 let failedQueue = [];
 
 const processQueue = (error, token = null) => {
-  failedQueue.forEach(prom => {
+  failedQueue.forEach((prom) => {
     if (error) {
       prom.reject(error);
     } else {
@@ -19,7 +22,20 @@ const processQueue = (error, token = null) => {
   failedQueue = [];
 };
 
-// 1. REQUEST INTERCEPTOR: Attach token dynamically before every request
+// Login/refresh failures must NOT trigger the refresh-and-logout flow. A wrong password is a
+// normal 401; handling it as an expired session wiped storage and hard-reloaded /login.
+const isAuthRequest = (config) => /\/auth\/(login|refresh)/.test(config?.url || "");
+
+const forceLogout = () => {
+  localStorage.removeItem("token");
+  localStorage.removeItem("refreshToken");
+  localStorage.removeItem("user");
+  if (window.location.pathname !== "/login") {
+    window.location.href = "/login";
+  }
+};
+
+// 1. REQUEST INTERCEPTOR: attach the current token before every request
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
   if (token) {
@@ -28,26 +44,30 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// 2. RESPONSE INTERCEPTOR: The Production-Grade Failsafe
+// 2. RESPONSE INTERCEPTOR: refresh an expired token once, replay the request
 api.interceptors.response.use(
-  (response) => response, // If request succeeds, just return it.
+  (response) => response,
   async (error) => {
     const originalRequest = error.config;
+    const status = error.response?.status;
 
-    // If it's a 401 or 403 (Token missing/expired) AND we haven't already retried this exact request
-    if ((error.response?.status === 401 || error.response?.status === 403) && !originalRequest._retry) {
-      
-      // If another request is already refreshing the token, queue this one up and wait
+    if (!originalRequest || isAuthRequest(originalRequest)) {
+      return Promise.reject(error);
+    }
+
+    if ((status === 401 || status === 403) && !originalRequest._retry) {
+
+      // Another request is already refreshing: wait for it, then replay with the new token
       if (isRefreshing) {
-        return new Promise(function(resolve, reject) {
+        return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
-        }).then(token => {
+        }).then((token) => {
+          originalRequest._retry = true; // so a second failure can't start another refresh cycle
           originalRequest.headers.Authorization = `Bearer ${token}`;
           return api(originalRequest);
-        }).catch(err => Promise.reject(err));
+        });
       }
 
-      // We are the first request to fail. Lock the queue and start refreshing.
       originalRequest._retry = true;
       isRefreshing = true;
 
@@ -55,35 +75,27 @@ api.interceptors.response.use(
         const refreshToken = localStorage.getItem("refreshToken");
         if (!refreshToken) throw new Error("No refresh token available");
 
-        // Hit the backend to get a fresh pair of tokens
-        const { data } = await axios.post(`${import.meta.env.VITE_API_URL}/api/auth/refresh`, {
-          refreshToken
-        });
+        // Plain axios (not `api`) so this call can't recurse into this interceptor
+        const { data } = await axios.post(`${API_URL}/api/auth/refresh`, { refreshToken });
 
-        const newToken = data.token;
-        
-        // Save the fresh tokens
+        const newToken = data.token || data.accessToken;
+        if (!newToken) throw new Error("Refresh response did not include a token");
+
         localStorage.setItem("token", newToken);
         if (data.refreshToken) {
           localStorage.setItem("refreshToken", data.refreshToken);
         }
 
-        // Apply new token to the paused request
         originalRequest.headers.Authorization = `Bearer ${newToken}`;
-
-        // Release the queue so all other paused requests can replay with the new token
         processQueue(null, newToken);
-        
+
         return api(originalRequest);
       } catch (err) {
-        // If the refresh token is ALSO dead, it's game over. Nuke storage and force a hard logout.
+        // Refresh token is dead too: clear the session and send the user to /login
         processQueue(err, null);
-        localStorage.removeItem("token");
-        localStorage.removeItem("refreshToken");
-        window.location.href = "/login"; // Kick them to the login screen
+        forceLogout();
         return Promise.reject(err);
       } finally {
-        // Unlock the interceptor
         isRefreshing = false;
       }
     }
@@ -137,6 +149,12 @@ export const deleteAllUsernames = async (category) => {
   return data;
 };
 
+// Re-scrapes fresh (non-expired) video URLs for the given profile ids (video theme background)
+export const refreshProfileVideos = async (ids, force = false) => {
+  const { data } = await api.post("/profiles/refresh-videos", { ids, force });
+  return data;
+};
+
 // --- Attribute Routes ---
 
 export const updateNation = async (id, nation) => {
@@ -169,7 +187,7 @@ export const bulkUpdateAttribute = async (ids, attribute, values) => {
   return data;
 };
 
-// USER SETTINGS 
+// USER SETTINGS
 export const getUserSettings = async () => {
   const { data } = await api.get("/users/settings");
   return data.data;

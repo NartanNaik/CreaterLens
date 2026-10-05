@@ -441,7 +441,7 @@ export default function StagingQueue() {
   return (
     <div className="dashboard-container relative flex flex-col h-full overflow-hidden">
 
-      {isVideoTheme && bgVideos.length > 0 && (
+      {isVideoTheme && (
         <div className="video-bg-container">
           {bgVideos.map((p) => (
             <video

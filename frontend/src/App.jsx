@@ -58,7 +58,7 @@ function GlobalLayout() {
   const navClass = ({ isActive }) => `nav-link${isActive ? ' active' : ''}`;
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${isVideoTheme ? ' video-mode' : ''}`}>
 
       {/* Global Navbar */}
       <header className="app-header">
