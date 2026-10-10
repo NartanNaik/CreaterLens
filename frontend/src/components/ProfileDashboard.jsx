@@ -562,7 +562,7 @@ export default function ProfileDashboard() {
   const videoCandidateIds = useMemo(
     () => filteredAndSortedProfiles
       .filter(p => p.sourceUrl)
-      .slice(0, Math.min(12, bgVideoCount + 4))   // a few spares in case some have no video
+      .slice(0, Math.min(12, bgVideoCount + 2))   // two spares in case some have no video
       .map(p => p.id),
     [filteredAndSortedProfiles, bgVideoCount]
   );

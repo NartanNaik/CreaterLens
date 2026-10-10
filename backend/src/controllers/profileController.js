@@ -257,3 +257,21 @@ export const massUpload = async (req, res) => {
     return res.status(500).json({ success: false, error: "Internal server error." });
   }
 };
+
+export const refreshVideos = async (req, res) => {
+  try {
+    const { ids, force } = req.body;
+    
+    if (!ids || !Array.isArray(ids)) {
+      return res.status(400).json({ success: false, error: "An array of IDs is required." });
+    }
+
+    // Calls your service to handle the actual refresh logic
+    const result = await profileService.refreshVideos(ids, force); 
+    
+    return res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    console.error("Error refreshing videos:", error);
+    return res.status(500).json({ success: false, error: "Internal server error." });
+  }
+};

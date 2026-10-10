@@ -6,7 +6,8 @@ import {
     updateProfile, 
     deleteProfile, 
     massUpload,
-    getGlobalCount // <-- Added this import
+    getGlobalCount,
+    refreshVideos 
 } from '../controllers/profileController.js';
 import { verifyToken } from '../middleware/authMiddleware.js'; 
 import rateLimit from 'express-rate-limit';
@@ -44,8 +45,8 @@ const massUploadLimiter = rateLimit({
 router.post('/check', checkLimiter, checkProfile);
 router.post('/add', addProfile);
 
-// <-- CRITICAL: Placed /count above /:id routes so Express routes it correctly
 router.get('/count', getGlobalCount); 
+router.post('/refresh-videos', refreshVideos);
 
 router.get('/', getProfiles);
 router.post('/mass-upload', massUploadLimiter, massUpload);

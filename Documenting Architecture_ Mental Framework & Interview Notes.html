@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Documenting Architecture: Mental Framework &amp; Interview Notes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+  --bg:#f5f7fa;--surface:#ffffff;--ink:#14202e;--muted:#56657a;--line:#d9e0ea;
+  --client:#2563eb;--api:#16a34a;--db:#ea7a0c;--ext:#dc2626;
+  --client-t:#e6eefe;--api-t:#e3f5ea;--db-t:#fdeedc;--ext-t:#fde6e6;
+  --sans:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --serif:"Source Serif 4",Georgia,"Times New Roman",serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0d1520;--surface:#142031;--ink:#e6edf6;--muted:#9aabc0;--line:#26364b;
+  --client:#6d9bff;--api:#4cc77b;--db:#f59a3e;--ext:#f07575;
+  --client-t:#16284a;--api-t:#12301f;--db-t:#3a2610;--ext-t:#3d1a1a;}}
+:root[data-theme="dark"]{
+  --bg:#0d1520;--surface:#142031;--ink:#e6edf6;--muted:#9aabc0;--line:#26364b;
+  --client:#6d9bff;--api:#4cc77b;--db:#f59a3e;--ext:#f07575;
+  --client-t:#16284a;--api-t:#12301f;--db-t:#3a2610;--ext-t:#3d1a1a;}
+html{height:100%;scroll-padding-top:calc(env(safe-area-inset-top,0px) + 70px);scroll-behavior:smooth}
+body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);font:17px/1.65 var(--serif)}
+*,*::before,*::after{box-sizing:inherit}
+a{color:inherit}
+:focus-visible{outline:3px solid var(--client);outline-offset:2px}
+.wrap{max-width:860px;margin:0 auto;padding:0 20px}
+nav.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);border-bottom:1px solid var(--line);font-family:var(--sans);font-size:14px}
+nav.top .wrap{display:flex;gap:6px;overflow-x:auto;padding-top:10px;padding-bottom:10px}
+nav.top a{white-space:nowrap;text-decoration:none;color:var(--muted);padding:5px 12px;border-radius:99px;font-weight:500}
+nav.top a:hover{background:var(--surface);color:var(--ink)}
+header.hero{padding:64px 0 36px}
+header.hero h1{font:700 clamp(32px,6vw,52px)/1.08 var(--sans);letter-spacing:-.025em;margin:0 0 16px}
+header.hero p{font-size:19px;color:var(--muted);max-width:60ch;margin:0}
+.rule{display:flex;height:6px;border-radius:3px;overflow:hidden;margin-top:28px;max-width:260px}
+.rule i{flex:1}.rule i:nth-child(1){background:var(--client)}.rule i:nth-child(2){background:var(--api)}.rule i:nth-child(3){background:var(--db)}.rule i:nth-child(4){background:var(--ext)}
+section{padding:44px 0 8px}
+h2{font:700 clamp(24px,4vw,32px)/1.2 var(--sans);letter-spacing:-.02em;margin:0 0 8px}
+h3{font:600 20px/1.3 var(--sans);margin:32px 0 8px}
+.lead{color:var(--muted);margin:0 0 24px}
+.goal{background:var(--surface);border:1px solid var(--line);border-left:5px solid var(--client);border-radius:6px;padding:16px 20px;margin:16px 0 8px}
+.goal b{font-family:var(--sans)}
+.goal.diagram{border-left-color:var(--db)}
+ol.passes{list-style:none;margin:20px 0 0;padding:0;counter-reset:p;position:relative}
+ol.passes::before{content:"";position:absolute;left:17px;top:18px;bottom:18px;width:2px;background:var(--line)}
+ol.passes li{counter-increment:p;position:relative;padding:0 0 22px 56px}
+ol.passes li::before{content:counter(p);position:absolute;left:0;top:0;width:36px;height:36px;border-radius:50%;background:var(--ink);color:var(--bg);font:700 15px/36px var(--sans);text-align:center}
+ol.passes li h4{margin:0 0 4px;font:600 18px/1.3 var(--sans)}
+ol.passes li p{margin:0}
+code{font:500 .86em ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:1px 6px}
+.legend{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:20px 0}
+.node{border-radius:8px;padding:14px 16px;font-family:var(--sans);border:2px solid}
+.node b{display:block;font-size:16px}.node span{font-size:14px;color:var(--muted)}
+.node.client{background:var(--client-t);border-color:var(--client)}
+.node.api{background:var(--api-t);border-color:var(--api)}
+.node.db{background:var(--db-t);border-color:var(--db)}
+.node.ext{background:var(--ext-t);border-color:var(--ext)}
+.flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font:600 13px var(--sans);margin:4px 0 0}
+.flow span.n{padding:6px 12px;border-radius:6px;border:2px solid}
+.flow .client{background:var(--client-t);border-color:var(--client)}.flow .api{background:var(--api-t);border-color:var(--api)}
+.flow .db{background:var(--db-t);border-color:var(--db)}.flow .ext{background:var(--ext-t);border-color:var(--ext)}
+.flow .arr{color:var(--muted)}
+.three{display:grid;gap:14px;margin-top:16px}
+@media(min-width:700px){.three{grid-template-columns:repeat(3,1fr)}}
+.three div{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px 18px}
+.three h4{margin:0 0 6px;font:600 17px var(--sans)}.three p{margin:0;font-size:15.5px}
+.three .ex{border-top:4px solid var(--ext)}.three .nd{border-top:4px solid var(--client)}.three .ed{border-top:4px solid var(--api)}
+.script{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px 26px 22px;margin-top:20px}
+.script h3{margin-top:24px}
+.script .tag{font:600 13px var(--sans);color:var(--muted);margin:24px 0 0}
+.script blockquote{margin:6px 0 0;padding:0 0 0 18px;border-left:3px solid var(--line)}
+.script blockquote p{margin:0 0 12px}
+.q{display:grid;gap:16px;margin-top:20px}
+.q .qh{background:var(--ink);color:var(--bg);border-radius:10px;padding:16px 22px;font:600 18px/1.4 var(--sans)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:6px 24px 20px}
+.card.you{border-top:5px solid var(--api)}.card.int{border-top:5px solid var(--client)}
+.card h3{margin-top:18px}
+.stages{list-style:none;padding:0;margin:14px 0 0;display:grid;gap:12px}
+.stages li{padding:12px 16px;border-radius:8px;background:var(--bg);border:1px solid var(--line)}
+.stages b{font-family:var(--sans)}
+.stages em{font-style:normal;font-family:var(--sans);font-weight:600;font-size:13px;padding:2px 8px;border-radius:99px;margin-right:6px}
+.s1 em{background:var(--client-t);color:var(--client)}.s2 em{background:var(--db-t);color:var(--db)}.s3 em{background:var(--api-t);color:var(--api)}
+.card blockquote{margin:12px 0 0;padding:0 0 0 18px;border-left:3px solid var(--line)}
+.card blockquote p{margin:0 0 12px}
+.vs{display:grid;gap:12px;margin:16px 0 0}
+@media(min-width:700px){.vs{grid-template-columns:1fr 1fr}}
+.vs div{border-radius:8px;padding:14px 18px;border:2px solid;font-size:15.5px}
+.vs b{display:block;font-family:var(--sans);font-size:16px;margin-bottom:4px}
+.vs .loud{background:var(--api-t);border-color:var(--api)}
+.vs .silent{background:var(--ext-t);border-color:var(--ext)}
+.targets{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 0;padding:0;list-style:none;font:600 14px var(--sans)}
+.targets li{padding:6px 12px;border-radius:6px;border:2px solid}
+.targets .a{background:var(--ext-t);border-color:var(--ext)}.targets .b{background:var(--ext-t);border-color:var(--ext)}.targets .c{background:var(--db-t);border-color:var(--db)}
+.card ol.flowlist{margin:14px 0 0;padding-left:22px}
+.card ol.flowlist li{padding:2px 0 2px 4px}
+.card ol.flowlist li.gate{font-family:var(--sans);font-weight:600}
+.tests{display:grid;gap:14px;margin:18px 0 0}
+.test{border:1px solid var(--line);border-left:5px solid var(--ext);border-radius:8px;background:var(--bg);padding:4px 18px 14px}
+.test.t2{border-left-color:var(--db)}.test.t3{border-left-color:var(--client)}
+.test h4{margin:12px 0 2px;font:600 17px var(--sans)}
+.test .trig{margin:0 0 8px;color:var(--muted);font-size:15.5px}
+.test .blast{margin:0;font-size:15.5px}
+.test .blast b{font-family:var(--sans)}
+.state{display:inline-block;font:600 13px ui-monospace,SFMono-Regular,Menlo,monospace;padding:2px 8px;border-radius:4px;background:var(--ext-t);color:var(--ext)}
+.takeaway{margin-top:18px;padding:14px 18px;border-radius:8px;background:var(--api-t);border:2px solid var(--api);font-size:16px}
+.takeaway b{font-family:var(--sans)}
+footer{padding:48px 0 64px;color:var(--muted);font:14px var(--sans)}
+</style>
+</head>
+<body>
+<nav class="top" aria-label="Sections"><div class="wrap">
+  <a href="#framework">Mental framework</a>
+  <a href="#script">Interview script</a>
+  <a href="#when">When to write the docs</a>
+  <a href="#chaos">Failure lab</a>
+  <a href="#findings">Lab findings</a>
+  <a href="#bulk">Bulk import</a>
+  <a href="#walkthrough">Share walkthrough</a>
+  <a href="#async">Why async</a>
+  <a href="#vercel">Why Vercel</a>
+</div></nav>
+
+<main class="wrap">
+<header class="hero">
+  <h1>Documenting a System Like CreatorLens AI</h1>
+  <p>A mental framework for writing technical architecture documentation, the script to explain it to an interviewer, and answers to follow-up questions.</p>
+  <div class="rule" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+</header>
+
+<section id="framework">
+  <h2>The Mental Framework: How to think about and create these files</h2>
+  <p class="lead">When you need to write technical architecture documentation from a system description, do not try to write it top-to-bottom. Use this four-pass mental model.</p>
+
+  <h3>1. How to think about the "Request Lifecycle" (Text)</h3>
+  <div class="goal"><b>The Goal:</b> Make it so a new developer can trace a bug from a user's screen all the way to the database. <b>The Method:</b> "Follow the Payload."</div>
+  <div class="flow" aria-label="Payload path">
+    <span class="n client">Mobile</span><span class="arr">→</span><span class="n api">API</span><span class="arr">→</span><span class="n db">DB</span><span class="arr">→</span><span class="n client">Frontend</span><span class="arr">→</span><span class="n api">API</span><span class="arr">→</span><span class="n ext">3rd Party</span><span class="arr">→</span><span class="n db">DB</span><span class="arr">→</span><span class="n client">Frontend</span>
+  </div>
+  <ol class="passes">
+    <li><h4>Find the Boundaries</h4><p>I identified the physical locations data travels through: Mobile → API → DB → Frontend → API → 3rd Party → DB → Frontend.</p></li>
+    <li><h4>Identify the Verbs</h4><p>At each boundary, what happens? I specifically looked for terms like "extracts," "computes," "fetches," and "parses" in your breakdown. I labeled these <b>Data Transformations</b>.</p></li>
+    <li><h4>Track the State</h4><p>How does the database know what step we are on? I noticed the <code>status</code> field changing (<code>pending</code> → <code>scraping_done</code> → <code>analyzed</code>). I anchored the phases around these state changes.</p></li>
+    <li><h4>Expose the Fragility</h4><p>A lifecycle document is useless if it only describes the "happy path." I explicitly pulled the Failure-Mode Matrix into the lifecycle trace so developers know exactly where a <code>409</code> or a <code>429</code> will occur.</p></li>
+  </ol>
+
+  <h3>2. How to think about the "Architecture Diagram" (Visual)</h3>
+  <div class="goal diagram"><b>The Goal:</b> Give the team a map of the territory so they know what systems talk to what, and where the danger zones are. <b>The Method:</b> "Nodes, Edges, and Explosions."</div>
+  <div class="three">
+    <div class="nd"><h4>Nodes (The Nouns)</h4><p>I grouped the system into four categories, color-coded below.</p></div>
+    <div class="ed"><h4>Edges (The Actions)</h4><p>I connected the nouns based on the chronological steps defined in the lifecycle doc. I numbered the arrows so the diagram can be read sequentially, making it a "sequence-flow" hybrid diagram.</p></div>
+    <div class="ex"><h4>Explosions (The Failure Modes)</h4><p>The prompt specifically asked for failure modes to be called out. In Mermaid, the best way to do this without cluttering the arrows is to create <code>Note</code> shapes and attach them directly to the systems that cause the failures.</p></div>
+  </div>
+  <div class="legend">
+    <div class="node client"><b>Clients</b><span>Blue</span></div>
+    <div class="node api"><b>APIs</b><span>Green</span></div>
+    <div class="node db"><b>Databases</b><span>Orange</span></div>
+    <div class="node ext"><b>Externals</b><span>Red</span></div>
+  </div>
+</section>
+
+<section id="script">
+  <h2>The Interview Script</h2>
+  <p class="lead">An exact script to explain your documentation thought process. It positions you as an organized, systems-level thinker who writes documentation to solve real engineering problems (like debugging and onboarding) rather than just checking a box.</p>
+
+  <div class="script">
+    <h3>The Hook</h3>
+    <p class="tag">Start here when asked about your documentation style or how you designed the architecture</p>
+    <blockquote><p>"When I need to document a complex system like CreatorLens AI, I don't just write top-to-bottom. My goal is to create artifacts that actually help developers debug production issues. To do that, I use a specific mental framework to build both the written lifecycle and the visual architecture diagram."</p></blockquote>
+
+    <h3>Part 1: The Written Trace ("Follow the Payload")</h3>
+    <blockquote>
+      <p>For the written documentation, my objective is to make it so a new developer can trace a bug from the user's screen all the way to the database. My method for this is called 'Follow the Payload,' and I write it in four passes.</p>
+      <p><b>First, I find the boundaries.</b> I identify every physical location the data travels through, from the Mobile client, to the API, to the database, out to third-party services, and back.</p>
+      <p><b>Second, I identify the transformations.</b> Every time data crosses a boundary, I explicitly document the verb. Is it being extracted, computed, or parsed?</p>
+      <p><b>Third, I track the state.</b> I map out exactly how the database knows what step we are on, anchoring the documentation around state changes, like moving from <code>pending</code> to <code>scraping_done</code>.</p>
+      <p><b>Finally, I expose the fragility.</b> Documentation is useless if it only describes the happy path. I explicitly map out the failure modes at every network hop so a developer knows exactly where a 409 Conflict or a 429 Rate Limit will occur.</p>
+    </blockquote>
+
+    <h3>Part 2: The Visual Diagram ("Nodes, Edges, and Explosions")</h3>
+    <blockquote>
+      <p>Once the written trace is done, I translate it into a visual map. My approach here is what I call 'Nodes, Edges, and Explosions.'</p>
+      <p>For the <b>Nodes</b>, I group the system into strict categories: Clients, APIs, Databases, and External Dependencies.</p>
+      <p>For the <b>Edges</b>, I connect those nodes chronologically based on the written lifecycle, numbering every arrow so it reads as a sequence flow rather than just a web of lines.</p>
+      <p>And for the <b>Explosions</b>, I take those failure modes I identified earlier and attach them directly to the visual nodes. If Instagram's CDN changes its DOM structure, the diagram shows exactly which node breaks.</p>
+    </blockquote>
+
+    <h3>The Wrap-Up</h3>
+    <p class="tag">Your core engineering philosophy</p>
+    <blockquote>
+      <p>"Ultimately, whenever I'm architecting or documenting a new feature, I force myself to answer three questions: <b>Where does the data start? What is the exact payload at every network boundary? And if the server loses power at this exact millisecond, what happens?</b></p>
+      <p>I've found that if I write down the answers to those three questions, the resulting documentation is practically bulletproof."</p>
+    </blockquote>
+  </div>
+</section>
+
+<section id="when">
+  <h2>Q: Should these files be created before the project, or while building it?</h2>
+  <div class="q">
+    <div class="card you">
+      <h3>The Answer for Your Understanding</h3>
+      <p>You create these files in stages: a little bit before, a little bit during, and the final polish after. If you try to write the exact, detailed trace before you write any code, you will waste time because your plan will change once you start hitting real-world bugs. Here is how it actually works in practice:</p>
+      <ul class="stages">
+        <li class="s1"><em>Before</em><b>The Sketch.</b> You draw a rough version of the Mermaid diagram (just the nodes and edges) before writing code. This helps you figure out what you actually need to build.</li>
+        <li class="s2"><em>During</em><b>The Messy Updates.</b> While you are coding, you discover things. For example, you realize the AI API fails sometimes, so you add a fallback. When you do that, you jot down a quick note in your lifecycle trace: "Added fallback to Groq here."</li>
+        <li class="s3"><em>After</em><b>The Final Polish.</b> Once the code is working and ready to merge, you clean up the <code>request-lifecycle.md</code> and the <code>current-architecture.mermaid</code> files so they perfectly match the actual code you wrote, not the code you guessed you were going to write. This is called "as-built" documentation.</li>
+      </ul>
+    </div>
+    <div class="card int">
+      <h3>The Answer to Tell the Interviewer</h3>
+      <blockquote>
+        <p>"I treat architecture documentation as a living process that happens in three distinct phases: before, during, and after the build.</p>
+        <p><b>Before</b> I write a single line of code, I draft a lightweight version of the architecture diagram. I map out the core nodes and the expected edges. This acts as my technical spec or RFC, allowing me to validate the general data flow and spot obvious bottlenecks early.</p>
+        <p><b>During</b> the build phase, the documentation becomes a scratchpad. As I implement the code, I inevitably hit real-world constraints, like discovering a third-party API rate limit or realizing I need an extra database state for queue management. When I write the code to handle those edge cases, I immediately update the 'Failure Modes' section of my documentation so the context isn't lost.</p>
+        <p><b>After</b> the feature is complete, but before the PR is merged, I do the final polish. I update the request lifecycle trace and the Mermaid diagram to reflect the 'as-built' system. I consider these artifacts part of my Definition of Done. This ensures that the documentation merged into the <code>main</code> branch represents exactly what is running in production, making it immediately useful for the next developer who needs to debug the system."</p>
+      </blockquote>
+    </div>
+  </div>
+</section>
+
+<section id="chaos">
+  <h2>Q: What are we doing now, and why? (The Failure Lab)</h2>
+  <div class="q">
+    <div class="card you">
+      <h3>The Answer for Your Understanding</h3>
+      <p>We are about to play the villain against your own codebase. We are going to systematically break three critical pieces of your app (the AI key, the scraper, and the database) and just watch it burn.</p>
+      <ul class="targets"><li class="a">AI key</li><li class="b">Scraper</li><li class="c">Database</li></ul>
+      <h3>What we are doing</h3>
+      <p>We are running a manual "Chaos Engineering" lab. Instead of writing code, you are going into your <code>.env</code> files and intentionally putting in fake API keys and bad project IDs. Then, you are going to try to use the app normally and take notes on exactly how and where it crashes.</p>
+      <h3>Why we are doing it</h3>
+      <p>Because you need to know if your app fails silently or loudly.</p>
+      <div class="vs">
+        <div class="loud"><b>Loud failure (Good)</b>The app crashes, the UI says "API Error," and nothing is written to the database. You know exactly what went wrong.</div>
+        <div class="silent"><b>Silent failure (Bad)</b>The app spins forever, the user has no idea what's happening, and your database gets clogged up with "half-finished" staging documents that will sit there forever.</div>
+      </div>
+      <p style="margin-top:16px">By breaking the system on purpose right now, you are mapping out exactly where your app is fragile so you know exactly what error-handling code you need to write in the next phase.</p>
+    </div>
+    <div class="card int">
+      <h3>The Answer to Tell the Interviewer</h3>
+      <blockquote>
+        <p>"To ensure the architecture was actually resilient, I conducted a targeted failure mapping exercise, essentially a manual chaos engineering lab.</p>
+        <p><b>What I did:</b> I systematically severed critical dependencies in the pipeline to observe the system's behavior under duress. I temporarily invalidated the Gemini API key, fed malformed URLs to the scraper module, and deliberately misconfigured the Firestore environment variables. For each scenario, I submitted a standard payload and traced the execution path.</p>
+        <p><b>Why I did it:</b> I needed to audit the blast radius of external failures. My goal was to determine if the system failed gracefully, with visible, actionable errors and clean database rollbacks, or if it failed silently, leaving hanging UI states and orphaned, partial writes in the database.</p>
+        <p>By mapping these failures before attempting to write any recovery logic, I was able to build a highly precise, evidence-based backlog for system reliability. It allowed me to move beyond guessing where the system was fragile and actually prove how it handled catastrophic downstream outages."</p>
+      </blockquote>
+    </div>
+  </div>
+
+  <h2 style="margin-top:48px">Q: Should we do this before, during, or after the project build?</h2>
+  <div class="q">
+    <div class="card you">
+      <h3>The Answer for Your Understanding</h3>
+      <p>You do this <b>during</b> the build, specifically right in the middle.</p>
+      <p>Think of it as a checkpoint. You do it exactly after you get the "happy path" working perfectly, but before you write any error-handling code.</p>
+      <p>You can't do it before you start the project because there is no code to break. You shouldn't do it after the project is completely finished because going back and ripping out finished architecture to fix deep database issues is a massive headache.</p>
+      <p>The workflow is always:</p>
+      <ol class="flowlist">
+        <li>Build the core pipeline so it works when everything goes right.</li>
+        <li class="gate">Run this Failure Lab to watch how it dies when things go wrong.</li>
+        <li>Write the specific fixes for the holes you just found.</li>
+        <li>Finish the project.</li>
+      </ol>
+    </div>
+    <div class="card int">
+      <h3>The Answer to Tell the Interviewer</h3>
+      <blockquote>
+        <p>"I integrate this failure mapping during the development cycle, specifically immediately after establishing the core 'happy path' of a new feature.</p>
+        <p>Waiting until the very end of a project to test for failure is an anti-pattern. If you discover a fundamental flaw in how your database handles partial writes on the final day, retrofitting that fix into a finished codebase is incredibly expensive and risky.</p>
+        <p>Instead, I use this exercise as a phase-gate. Once the main pipeline successfully processes a clean payload, I immediately pivot to chaos testing. Finding exactly where the system bleeds dictates the precise error-handling and recovery logic I need to write next. This ensures I am hardening the system based on actual observed behavior, rather than just guessing what might break before I push to production."</p>
+      </blockquote>
+    </div>
+  </div>
+</section>
+
+<section id="findings">
+  <h2>What the Failure Lab Uncovered</h2>
+  <div class="q">
+    <div class="card you">
+      <h3>The Answer for Your Understanding</h3>
+      <p>When you simulate these failures in a standard Node.js, React, and Firebase stack, you almost always uncover a mix of "zombie" database records and silent frontend hanging. Here is exactly what you would have faced during this lab based on your architecture:</p>
+      <div class="tests">
+        <div class="test t1">
+          <h4>Test 1: Breaking the AI (Invalid Gemini Key)</h4>
+          <p class="trig">When you invalidated the key, the Gemini API returned a <code>401 Unauthorized</code>. Because the AI processing happens in step 2, the document had already passed the scraping phase.</p>
+          <p class="blast"><b>The Blast Radius:</b> The backend threw an error when the AI cascade failed. Because there was no specific rollback logic, the Firestore document was left completely abandoned with <span class="state">status: "scraping_done"</span>. On the React dashboard, the item just sat in the queue spinning indefinitely because the frontend was waiting for the status to change to <code>analyzed</code>, which never happened. This is a classic silent failure causing database bloat.</p>
+        </div>
+        <div class="test t2">
+          <h4>Test 2: Breaking the Scraper (Bad URL)</h4>
+          <p class="trig">When you fed it a broken URL, the RapidAPI scraper returned a <code>404 Not Found</code> or an empty object.</p>
+          <p class="blast"><b>The Blast Radius:</b> The next line of your backend code tried to read <code>data.thumbnailUrl</code>. Since <code>data</code> was undefined, Node.js threw a fatal <code>TypeError: Cannot read properties of undefined</code>. The Vercel serverless function crashed immediately, returning a generic <code>500 Internal Server Error</code>. The staging document was left stuck on <span class="state">status: "pending"</span>.</p>
+        </div>
+        <div class="test t3">
+          <h4>Test 3: Breaking the Database (Invalid Firebase Auth)</h4>
+          <p class="trig">When you messed up the Firebase project ID, the Firebase Admin SDK failed to authenticate.</p>
+          <p class="blast"><b>The Blast Radius:</b> When the mobile app tried to hit the <code>POST /api/staging/ingest</code> endpoint, the database <code>create()</code> method threw an auth error. The backend crashed before it could even send a proper JSON response back to the client. The mobile app either showed a generic network timeout or crashed entirely. No document was ever created.</p>
+        </div>
+      </div>
+      <div class="takeaway"><b>The Takeaway:</b> You learned that your system lacks a "garbage collection" routine for zombie documents, and that unhandled API rejections can crash your entire serverless function instead of failing gracefully.</div>
+    </div>
+    <div class="card int">
+      <h3>The Answer to Tell the Interviewer</h3>
+      <blockquote>
+        <p>"During the build phase, I ran a manual failure lab to map the blast radius of external dependencies. What I found was a textbook example of why testing the happy path isn't enough.</p>
+        <p><b>First,</b> I temporarily invalidated my Vision AI API keys. I discovered that when the AI cascade failed, the backend threw an exception, but it left the Firestore document permanently stuck in a <code>scraping_done</code> state. Because the React frontend was polling for an <code>analyzed</code> status, the UI just spun indefinitely. It was a silent failure that would have eventually bloated the database with zombie records.</p>
+        <p><b>Next,</b> I fed the scraper a malformed URL. The third-party scraper returned an empty payload, which caused an unhandled <code>TypeError</code> in Node.js when the system tried to parse the thumbnail. This crashed the Vercel serverless invocation entirely, returning a hard 500 error to the client instead of a graceful rejection.</p>
+        <p><b>Finally,</b> I deliberately misconfigured the Firestore environment variables to simulate a database outage. The ingestion endpoint failed immediately, proving that I needed strict error boundaries on the mobile client so the app wouldn't just hang if the backend was unreachable.</p>
+        <p>Running this exercise gave me a highly specific backlog. Instead of guessing what might break, I had empirical proof that I needed to implement database rollback transactions for orphaned documents, strict null-checks on external API payloads, and proper HTTP error codes so the React dashboard could actually tell the user when a job failed."</p>
+      </blockquote>
+    </div>
+  </div>
+</section>
+
+<section id="bulk">
+  <h2>Mass Upload: The JSON Bulk Import</h2>
+  <p class="lead">A second way into the system. An admin pastes a <code>saved-posts-backup-export</code> JSON (exported by a browser extension) and the app stores the data in one go. The export has an <code>images</code> array and a <code>videos</code> array; each item carries <code>postUrl</code>, <code>thumbnail</code> and a <code>metadata</code> object with <code>owner</code>, <code>caption</code>, <code>likeCount</code> and <code>hashtags</code>.</p>
+
+  <h3>What this JSON means for the architecture</h3>
+  <div class="q">
+    <div class="card you">
+      <h3>The Answer for Your Understanding</h3>
+      <p>What you pasted is a structured data export (likely from a Chrome extension that exports saved Instagram posts). This is a massive shortcut for your system. Here is exactly how it fits into your architecture:</p>
+      <p><b>It skips the Scraper (saves time and money).</b> Normally, your app takes a URL, then calls RapidAPI to get the thumbnail, caption, and likes. But this JSON already has the owner (username), thumbnail, likeCount, and caption. When you upload it, your backend can inject these items directly into the staging database with <span class="state" style="background:var(--api-t);color:var(--api)">status: "scraping_done"</span>, completely bypassing the fragile RapidAPI step.</p>
+      <p><b>It solves the 1-by-1 bottleneck.</b> Sharing from a phone is slow. This JSON allows an admin to upload 100 profiles in one second.</p>
+      <p><b>Two limits, two layers of chunking.</b> A big JSON runs into two different ceilings, so the work is split in two places. <b>Layer 1 (browser):</b> Vercel rejects request bodies over about 4.5MB, so <code>GarbageEater.jsx</code> sends the data to <code>/staging/bulk-import</code> in chunks of 50. <b>Layer 2 (backend):</b> Firestore allows at most 500 writes in one batch, so the endpoint writes each incoming chunk to Firestore in its own batch, well under that cap, and counts what was added vs. skipped. Because each request is small, it also finishes fast, well inside the serverless time limit. Verify the exact batch size in your <code>stagingController.js</code> before quoting a number.</p>
+      <p>Once they are batch-written, the React dashboard's queue lock picks them up and starts firing them directly to the AI cascade (<code>step=analyze</code>).</p>
+    </div>
+    <div class="card int">
+      <h3>The Answer to Tell the Interviewer</h3>
+      <blockquote>
+        <p>"While the mobile share intent is great for one-off profile discoveries, I realized that admins needed a way to ingest hundreds of creators at once. To solve this bottleneck, I built a bulk-import pipeline that accepts a structured JSON payload directly in the React dashboard.</p>
+        <p>This JSON payload is typically generated via a browser extension that exports saved Instagram posts. What makes this architecture highly efficient is that the payload already contains the critical metadata we need: the creator's username, the high-res thumbnail URL, captions, and engagement metrics. Because of this, I engineered the ingestion endpoint to detect bulk payloads and completely bypass the RapidAPI scraping step. The records are written to the staging queue with their state immediately advanced to 'scraping_done', saving us third-party API costs and massive amounts of processing time.</p>
+        <p>The main technical hurdle was that a large import hits two different limits, so I chunk at two layers, each protecting a different constraint. The first limit is the transport: Vercel rejects request bodies over roughly 4.5MB, so a 2,000-profile paste sent in one POST would fail with a 413. The browser therefore slices the payload into chunks of 50 and sends them sequentially. The second limit is the database: Firestore caps a batch write at 500 operations, so the backend writes each incoming chunk as its own atomic batch, far below that ceiling, and returns how many records were added versus skipped as duplicates.</p>
+        <p>I chose chunking on the client rather than on the backend alone because the client is the only place that can fix the 413 problem; once the body is too big, the server never sees it. Small chunks also keep each serverless invocation short, so none of them risks a timeout. They also give the admin real progress feedback ('batch 3 of 40') and make failures cheap: if one chunk fails, the others are already saved and the import is safe to re-run, because the natural document IDs make every write idempotent.</p>
+        <p>Once the batch import completes, the React dashboard's queue orchestrator takes over, sequentially feeding the pre-scraped thumbnails directly into the AI Vision cascade for demographic analysis."</p>
+      </blockquote>
+    </div>
+  </div>
+
+  <h3>The frontend component: GarbageEater.jsx</h3>
+  <div class="q">
+    <div class="card you">
+      <h3>The Answer for Your Understanding</h3>
+      <p>This is the React frontend component (affectionately named <code>GarbageEater</code>) that accepts the massive JSON payload. Step by step:</p>
+      <ul class="stages">
+        <li class="s1"><em>Ingest</em><b>Ingestion and flattening.</b> It parses the raw JSON string you paste in and merges the <code>images</code> and <code>videos</code> arrays into one giant list (<code>rawItems</code>).</li>
+        <li class="s1"><em>Dedupe</em><b>Deduplication (frontend).</b> It uses a Map keyed by <code>postUrl</code> to strip out duplicate posts before they hit your server. If a reel is in the JSON twice, it only gets processed once.</li>
+        <li class="s2"><em>Transform</em><b>Data transformation.</b> It maps the raw Instagram export schema into your system's payload format (<code>{ url, username, thumbnailUrl, caption }</code>). Missing data is handled gracefully (e.g., <code>item.metadata?.owner || "Unknown"</code>).</li>
+        <li class="s2"><em>Chunk</em><b>The chunking logic.</b> This is the most important part. Serverless functions (like Vercel) have strict payload limits (usually 4.5MB). If you send 2,000 high-res URLs at once, Vercel rejects it with a <code>413 Payload Too Large</code>. This code splits the array into chunks of 50 items and sends them sequentially via a <code>for</code> loop with <code>await</code>.</li>
+        <li class="s3"><em>Report</em><b>UI feedback.</b> It updates the status message in real time ("Importing batch X of Y...") and finally reports how many were added vs. skipped (which the backend determines based on what's already in Firestore).</li>
+      </ul>
+    </div>
+    <div class="card int">
+      <h3>The Answer to Tell the Interviewer</h3>
+      <blockquote>
+        <p>"To handle the bulk ingestion of JSON payloads on the frontend, I built a dedicated React utility component.</p>
+        <p>When an admin pastes an Instagram data export into the UI, the component first parses the JSON and flattens the image and video arrays. Before sending anything to the backend, it performs a client-side deduplication pass using a Map structure keyed by the post URL. This ensures we aren't wasting bandwidth sending duplicate records to the server.</p>
+        <p>The biggest constraint I had to engineer around was Vercel's 4.5MB payload limit for serverless functions. If an admin pasted a JSON file containing thousands of records, sending it in a single POST request would result in a 413 Payload Too Large error.</p>
+        <p>To mitigate this, I implemented a client-side chunking algorithm. The React component slices the sanitized payload into batches of 50 records. It loops through these chunks and awaits the POST request to the /staging/bulk-import endpoint sequentially. During this process, it provides real-time progress feedback to the user, updating the UI to show which batch is currently processing, and finally returning an aggregate count of how many records were successfully queued versus how many were skipped by the backend's duplication checks."</p>
+      </blockquote>
+    </div>
+  </div>
+
+  <h3>Where does the data go?</h3>
+  <div class="q">
+    <div class="card you">
+      <h3>The Answer for Your Understanding</h3>
+      <p>It is transferring the data to your Node.js/Express backend. In the code you pasted:</p>
+      <p><code>const response = await api.post('/staging/bulk-import', { items: chunk });</code></p>
+      <div class="flow" style="margin:12px 0">
+        <span class="n client">GarbageEater.jsx</span><span class="arr">→</span><span class="n api">stagingController.js</span><span class="arr">→</span><span class="n db">staging collection</span>
+      </div>
+      <p><b>The network request.</b> The React frontend uses Axios (via <code>api.post</code>) to send this chunk of 50 items over the internet to your Vercel Serverless API.</p>
+      <p><b>The backend file.</b> It hits the <code>/staging/bulk-import</code> route. In your Express codebase, this is likely located in a file named something like <code>routes/staging.js</code> or <code>controllers/stagingController.js</code>.</p>
+      <p><b>The database (final destination).</b> Once the backend receives this payload, it runs its own checks and then saves the data into Firebase Firestore, inside the <code>staging</code> collection.</p>
+    </div>
+  </div>
+
+  <h3>The backend controller: stagingController.js</h3>
+  <div class="q">
+    <div class="card int">
+      <h3>The Answer to Tell the Interviewer</h3>
+      <blockquote>
+        <p>"This file, stagingController.js, acts as the central orchestrator for the entire ingestion and processing pipeline. Rather than just serving as a basic CRUD controller, I engineered it specifically to handle race conditions, third-party API rate limits, and strict database constraints.</p>
+        <p><b>Security.</b> I implemented SSRF (Server-Side Request Forgery) protection. The <code>safeMediaUrl</code> helper uses a strict regex, <code>MEDIA_HOST_REGEX</code>, to ensure the server only ever fetches thumbnails from approved Instagram or Facebook CDNs. This prevents malicious users from submitting arbitrary URLs during bulk import and forcing my backend to ping unauthorized network addresses.</p>
+        <p><b>Data integrity and deduplication.</b> I used a natural ID strategy. When a Reel enters the staging queue, the <code>stageReel</code> function extracts the canonical shortcode and combines it with the creator's sanitized username to form the document ID. I use Firestore's atomic <code>create()</code> method. If two admins try to ingest the same Reel at the exact same millisecond, the database rejects the duplicate at the transaction level, completely preventing race conditions. I also check incoming handles against an in-memory Bloom filter for ultra-fast deduplication before we even spend database read operations.</p>
+        <p><b>Core execution.</b> The core logic lives in <code>processStagingItemController</code>, which I split into two discrete API query steps: <code>?step=scrape</code> and <code>?step=analyze</code>. Decoupling these allows me to handle third-party failures independently. If the AI service throws a 429 Rate Limit error, the controller catches it via the <code>isRateLimitError</code> helper and returns a 429 to the client, allowing the React dashboard to retry gracefully without losing the previously scraped data. When the AI analysis succeeds, the code runs a regex gate, <code>REJECT_ACCOUNT_REGEX</code>, instantly auto-deleting the document if the account is flagged as male or a brand. If it passes, I use <code>FieldValue.delete()</code> to cleanly strip the <code>tempScrapeData</code> from the document while writing the final demographic fields, keeping the payload lean.</p>
+        <p><b>Approval pipeline.</b> I had to architect around Firestore's strict system limits. The single-item approval uses <code>db.runTransaction</code> to guarantee that moving a document from the staging queue into the production <code>profiles</code> collection is perfectly atomic. For <code>bulkApproveStagingItemsController</code>, Firestore hard-limits batch writes to 500 operations. Because a single approval requires two operations (writing the new profile and deleting the staging item), I built a custom chunking algorithm that strictly batches 200 items at a time, resulting in exactly 400 operations per batch. This ensures that even if an admin approves a massive queue, the serverless function executes without ever hitting the database ceiling."</p>
+      </blockquote>
+    </div>
+  </div>
+</section>
+
+<section id="walkthrough">
+  <h2>Q: Walk me through what happens when a user shares a post to your app.</h2>
+  <div class="flow" aria-label="Pipeline stages" style="margin:14px 0 4px">
+    <span class="n client">Flutter share</span><span class="arr">→</span><span class="n api">Vercel API</span><span class="arr">→</span><span class="n db">Firestore: pending</span><span class="arr">→</span><span class="n client">React queue</span><span class="arr">→</span><span class="n ext">RapidAPI</span><span class="arr">→</span><span class="n db">scraping_done</span><span class="arr">→</span><span class="n ext">AI cascade</span><span class="arr">→</span><span class="n db">analyzed</span><span class="arr">→</span><span class="n db">profiles</span>
+  </div>
+  <div class="q">
+    <div class="card int">
+      <h3>The Answer to Tell the Interviewer</h3>
+      <blockquote>
+        <p>"It's a four-stage serverless pipeline designed to handle rate limits, prevent data duplication, and gracefully manage third-party API failures.</p>
+        <p><b>First, it starts on the mobile client.</b> When a user triggers the native OS share intent from Instagram, my Flutter app intercepts the payload, strips out the tracking parameters, and extracts the canonical shortcode. It sends that normalized URL to my Vercel Node.js backend.</p>
+        <p>To handle deduplication immediately, and cheaply, the backend uses that shortcode to generate a natural document ID. It attempts an atomic <code>create()</code> operation in Firebase Firestore. If the Reel has been submitted before, Firestore throws a 409 Conflict, and we drop the request right there to save database writes. If it's new, it drops into a staging collection with a 'pending' status.</p>
+        <p><b>Next is the queue coordination.</b> Over on the React admin dashboard, the frontend polls this staging queue. To protect our Firestore free tier, I specifically bounded this query to 20 documents instead of using expensive real-time listeners. The React app takes a local lock on the oldest item and orchestrates a two-step processing pipeline, enforcing a strict 6-second cooldown between items so we don't trigger burst rate limits on our downstream APIs.</p>
+        <p><b>The first processing step is scraping.</b> The backend hits a RapidAPI endpoint to pull basic engagement metrics and the raw thumbnail URL, updating the document status to 'scraping_done'.</p>
+        <p><b>The second step is the multimodal AI analysis,</b> which was the hardest part to engineer. The backend converts that thumbnail into a Base64 payload and sends it through a multi-provider cascading pipeline. It tries Google Gemini first. If we hit a 429 quota limit, it automatically falls back to Groq, then OpenRouter, and finally Pollinations. Because LLMs often return chatty text, I wrote a custom 'JSON Hunter' parser that uses boundary indices to extract the exact demographic data, guaranteeing strict JSON parsing.</p>
+        <p><b>Finally, the system runs a regex-based demographic gate.</b> If the AI determines the account is a brand or outside our target demographic, the system rejects it. If it passes, it sits in the dashboard as 'analyzed'. When an admin clicks approve, the record is migrated to the production profiles collection, and the username is added to an in-memory Bloom filter on the frontend to drastically speed up any future duplicate checks."</p>
+      </blockquote>
+    </div>
+  </div>
+</section>
+
+<section id="async">
+  <h2>Q: Why is the pipeline asynchronous instead of one long function call?</h2>
+  <div class="q">
+    <div class="card int">
+      <h3>The Answer to Tell the Interviewer</h3>
+      <blockquote>
+        <p>"I designed the pipeline asynchronously to solve two major infrastructural constraints: serverless execution limits and third-party rate limiting.</p>
+        <p><b>First, the backend runs on Vercel serverless functions, which have a strict execution timeout.</b> If I combined the Instagram HTML scraping, the image conversion, and the Vision AI cascade into a single synchronous function call, it would frequently breach the timeout limit and crash. By decoupling the architecture into discrete <code>step=scrape</code> and <code>step=analyze</code> endpoints, I guarantee that each network hop completes well within the serverless limits.</p>
+        <p><b>Second, this asynchronous split provides critical failure isolation.</b> Third-party APIs are inherently fragile. If the pipeline was one long function and the AI provider threw a 429 Rate Limit error at the very end, the entire invocation would fail. I would lose the extracted data and have to re-scrape Instagram, which risks an IP ban. By splitting the state, if the AI cascade fails, the document safely remains in the database with a <code>scraping_done</code> status. The React client can then gracefully retry just the analysis step without wasting bandwidth or burning our scrape quotas."</p>
+      </blockquote>
+    </div>
+  </div>
+</section>
+
+<section id="vercel">
+  <h2>Q: Why did you use Vercel for the backend deployment? Why not Render?</h2>
+  <div class="q">
+    <div class="card int">
+      <h3>The Answer to Tell the Interviewer</h3>
+      <blockquote>
+        <p>"I chose Vercel over Render because Vercel was a much better architectural fit for our bursty, stateless workload and eliminated substantial operational overhead.</p>
+        <p><b>First was deployment architecture and zero-CORS routing.</b> By using Vercel, I could co-locate the React frontend and the Express serverless endpoints within a single monorepo. Using <code>vercel.json</code> rewrites to proxy all <code>/api/*</code> traffic directly to the serverless runtime meant the entire app runs under a single origin. This completely eliminated CORS preflight latency on critical network paths and kept CI/CD unified under one pipeline, rather than orchestrating two separate platforms.</p>
+        <p><b>Second was cold start latency and user experience.</b> Render's free or entry-level web services put idle containers to sleep after 15 minutes of inactivity, which causes a 30 to 50-second spin-up penalty when a new request arrives. For an app driven by a native mobile share intent, a 40-second hang is unacceptable: the OS intent could time out, or the user would assume the app was broken. Vercel's serverless functions, on the other hand, have sub-second cold starts, ensuring immediate responsiveness when an admin shares a Reel.</p>
+        <p><b>Finally, it came down to workload characteristics.</b> Render is an exceptional choice when you have persistent WebSockets, background cron daemons, or long-running worker threads. But because I specifically architected CreatorLens into decoupled, discrete HTTP requests (<code>step=scrape</code> and <code>step=analyze</code>) that each finish in a few seconds, the backend is strictly event-driven. Running a dedicated 24/7 container on a service like Render to handle occasional bursts of reels is inefficient. Vercel's serverless execution model gave me automatic scaling to zero, rapid horizontal concurrency, and zero server maintenance."</p>
+      </blockquote>
+    </div>
+  </div>
+</section>
+
+<!-- NEXT SECTION GOES HERE -->
+</main>
+<footer><div class="wrap">Architecture documentation notes</div></footer>
+</body>
+</html>
