@@ -1,7 +1,8 @@
 import jwt from 'jsonwebtoken';
 
 export const verifyToken = (req, res, next) => {
-    const authHeader = req.headers['authorization'];
+    // Handle both lowercase and uppercase header variations
+    const authHeader = req.headers['authorization'] || req.headers['Authorization'];
     const token = authHeader && authHeader.split(' ')[1]; // Expects "Bearer <token>"
 
     if (!token) {
@@ -24,8 +25,14 @@ export const verifyToken = (req, res, next) => {
     }
 
     try {
+        // This will decode the { id, email } payload we signed in authController.js
         const verified = jwt.verify(token, secret);
+        
+        // Attach it to req.user. 
+        // This is exactly how stagingController and profileController will know 
+        // to filter by `req.user.id` to keep data strictly isolated per user.
         req.user = verified;
+        
         next();
     } catch (err) {
         // PERMANENT FIX: Log the actual reason the token failed so you never have to guess again.

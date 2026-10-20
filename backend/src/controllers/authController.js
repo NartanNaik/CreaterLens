@@ -1,76 +1,126 @@
-import { login, refreshUserToken } from "../services/authService.js";
+import { OAuth2Client } from "google-auth-library";
+import { db } from "../config/firebase.js";
+import { encryptKey } from "../services/encryptionService.js";
+import jwt from "jsonwebtoken";
 
-export const loginUser = async (req, res) => {
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+export const googleLogin = async (req, res) => {
   try {
-    const { id, password } = req.body;
+    const { token } = req.body;
 
-    // Edge Case & Security: Prevent passing objects/arrays to bypass validation
-    if (typeof id !== "string" || typeof password !== "string") {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid input format."
+    if (!token) {
+      return res.status(400).json({ 
+        success: false, 
+        error: "Google token is required." 
       });
     }
 
-    const trimmedId = id.trim();
-
-    // Ensure neither field is empty after trimming
-    if (!trimmedId || !password) {
-      return res.status(400).json({
-        success: false,
-        message: "ID and password are required."
-      });
-    }
-
-    // Attempt the login via the service layer
-    const result = await login(trimmedId, password);
-
-    return res.status(200).json({
-      success: true,
-      message: "Login successful.",
-      token: result.token,
-      refreshToken: result.refreshToken, // Pass the new long-lived token to the client
-      user: result.user
+    // 1. Verify Google Token securely
+    const ticket = await client.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID,
     });
-  } catch (error) {
-    // Security: We intentionally hide the exact error.message (e.g., "User not found")
-    // to prevent User Enumeration attacks. All failures get the exact same response.
-    console.warn(`⚠️ Failed login attempt for ID: ${req.body?.id}`);
     
-    return res.status(401).json({
-      success: false,
-      message: "Invalid credentials."
+    const payload = ticket.getPayload();
+    const userId = payload.sub; // Google's immutable unique ID for this user
+
+    // 2. Check if user already exists in Firebase
+    const userRef = db.collection('users').doc(userId);
+    const userDoc = await userRef.get();
+
+    if (!userDoc.exists) {
+      // 3. NEW USER: Spawn a $0 limit OpenRouter Key using your Management Key
+      const orResponse = await fetch('https://openrouter.ai/api/v1/keys', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.OPENROUTER_MANAGEMENT_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: `User Key - ${payload.email}`,
+          limit: 0 // Hard cap at $0.00 to guarantee only free models can be used
+        })
+      });
+      
+      if (!orResponse.ok) {
+        console.error("OpenRouter API Error:", await orResponse.text());
+        throw new Error("Failed to generate OpenRouter key.");
+      }
+
+      const orData = await orResponse.json();
+      const rawApiKey = orData.key;
+
+      // 4. Save isolated user profile with their securely Encrypted Key
+      await userRef.set({
+        email: payload.email,
+        name: payload.name,
+        encryptedOrKey: encryptKey(rawApiKey),
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    // 5. Generate internal JWT for frontend session persistence
+    const sessionToken = jwt.sign(
+      { id: userId, email: payload.email }, 
+      process.env.JWT_SECRET, 
+      { expiresIn: '7d' }
+    );
+    
+    return res.status(200).json({ 
+      success: true, 
+      token: sessionToken, 
+      user: { 
+        id: userId, 
+        name: payload.name, 
+        email: payload.email 
+      } 
+    });
+
+  } catch (error) {
+    console.error("Google Auth Error:", error);
+    return res.status(401).json({ 
+      success: false, 
+      error: "Authentication failed." 
     });
   }
 };
 
 /**
- * Handle token refresh requests from the frontend Axios Interceptor
+ * Handle token refresh requests if your frontend relies on a refresh cycle
  */
 export const refreshTokenController = async (req, res) => {
   try {
-    const { refreshToken } = req.body;
-
-    if (!refreshToken) {
-      return res.status(401).json({
-        success: false,
-        message: "Refresh token required."
-      });
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ success: false, error: "Token required." });
     }
 
-    // Attempt to verify and issue new tokens via the service layer
-    const result = await refreshUserToken(refreshToken);
+    const token = authHeader.split(" ")[1];
+    
+    // Ignore expiration on the old token just to decode the user payload
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { ignoreExpiration: true });
+    
+    if (!decoded || !decoded.id) {
+      throw new Error("Invalid token payload");
+    }
+
+    // Issue a fresh token
+    const newToken = jwt.sign(
+      { id: decoded.id, email: decoded.email }, 
+      process.env.JWT_SECRET, 
+      { expiresIn: '7d' }
+    );
 
     return res.status(200).json({
       success: true,
-      token: result.token,
-      refreshToken: result.refreshToken
+      token: newToken
     });
   } catch (error) {
-    console.warn("⚠️ Failed token refresh attempt.");
+    console.error("Token refresh failed:", error);
     return res.status(403).json({
       success: false,
-      message: "Invalid or expired refresh token."
+      error: "Invalid or expired session."
     });
   }
 };

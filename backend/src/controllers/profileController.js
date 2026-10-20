@@ -1,11 +1,11 @@
 import * as profileService from "../services/profileService.js";
-import { db } from "../config/firebase.js"; // Injected to safely handle DB calls natively
+import { db } from "../config/firebase.js";
 
 // Instagram handles: letters, numbers, periods, underscores, max 30 chars
 const HANDLE_REGEX = /^[A-Za-z0-9._]{1,30}$/;
 
 // Fields clients must never be able to overwrite through PATCH/POST
-const PROTECTED_FIELDS = ["id", "createdAt", "updatedAt"];
+const PROTECTED_FIELDS = ["id", "userId", "createdAt", "updatedAt"];
 
 const NUMERIC_FIELDS = ["totalFollowers", "avgViewsPerWeek", "avgLikes", "avgComments"];
 const TRIMMED_STRING_FIELDS = ["contact", "nation", "skinTone", "bodyType", "reelType", "specialPart", "ageRange", "status", "notes", "category"];
@@ -26,11 +26,8 @@ const extractCleanUsername = (raw) => {
 
       const first = segments[0];
       if (first === "stories") {
-        // instagram.com/stories/<username>/<id>
         clean = segments[1] || "";
       } else if (first === "reel" || first === "reels" || first === "p" || first === "tv") {
-        // A post/reel link doesn't contain the account handle. It used to leak through
-        // as a "username" containing the whole URL.
         return "";
       } else {
         clean = first;
@@ -51,14 +48,13 @@ const toCount = (value) => Math.max(0, parseInt(value, 10) || 0);
 const sanitizeProfileData = (data = {}) => {
   const sanitized = { ...data };
 
-  // Never let the client set server-managed fields (mass-assignment protection)
+  // Never let the client set server-managed fields
   PROTECTED_FIELDS.forEach((field) => delete sanitized[field]);
 
   if (typeof sanitized.username === "string") {
     sanitized.username = extractCleanUsername(sanitized.username);
   }
 
-  // avgLikes / avgComments were previously not sanitized at all
   NUMERIC_FIELDS.forEach((field) => {
     if (sanitized[field] !== undefined) {
       sanitized[field] = toCount(sanitized[field]);
@@ -78,20 +74,23 @@ const sanitizeProfileData = (data = {}) => {
   return sanitized;
 };
 
-// Firestore Timestamps serialize to { _seconds, _nanoseconds }, which breaks sorting and
-// date display on the frontend. Convert them to ISO strings.
 const serializeDoc = (doc) => {
   const out = {};
   for (const [key, value] of Object.entries(doc.data())) {
     out[key] = value && typeof value.toDate === "function" ? value.toDate().toISOString() : value;
   }
-  return { ...out, id: doc.id }; // doc id always wins
+  return { ...out, id: doc.id };
 };
 
 const noCache = (res) => res.set("Cache-Control", "no-store");
 
 export const checkProfile = async (req, res) => {
   try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Unauthorized user." });
+    }
+
     const { username } = req.body || {};
     if (!username || typeof username !== "string" || !username.trim()) {
       return res.status(400).json({ success: false, error: "A valid username or URL is required." });
@@ -102,7 +101,7 @@ export const checkProfile = async (req, res) => {
       return res.status(400).json({ success: false, error: "Unable to extract a valid username handle." });
     }
 
-    const exists = await profileService.checkProfileExists(cleanUsername);
+    const exists = await profileService.checkProfileExists(cleanUsername, userId);
     return res.status(200).json({ success: true, username: cleanUsername, exists });
   } catch (error) {
     console.error("Error checking profile:", error);
@@ -112,6 +111,11 @@ export const checkProfile = async (req, res) => {
 
 export const addProfile = async (req, res) => {
   try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Unauthorized user." });
+    }
+
     if (!req.body || typeof req.body !== "object") {
       return res.status(400).json({ success: false, error: "Request body cannot be empty." });
     }
@@ -122,7 +126,7 @@ export const addProfile = async (req, res) => {
       return res.status(400).json({ success: false, error: "Valid username is required." });
     }
 
-    const newProfile = await profileService.addProfile(sanitizedData);
+    const newProfile = await profileService.addProfile({ ...sanitizedData, userId });
     return res.status(201).json({ success: true, message: "Profile added successfully.", profile: newProfile });
   } catch (error) {
     console.error("Error adding profile:", error);
@@ -133,15 +137,16 @@ export const addProfile = async (req, res) => {
   }
 };
 
-// Returns the full collection so "Copy All" captures everything.
-// NOTE: combining where("category") with orderBy("createdAt") needs a Firestore composite
-// index; if the category filter returns a 500, the error log contains a link to create it.
-// Also note: Firestore's orderBy silently excludes documents that have no createdAt field.
 export const getProfiles = async (req, res) => {
   try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Unauthorized user." });
+    }
+
     const category = typeof req.query.category === "string" ? req.query.category : "";
 
-    let query = db.collection("profiles");
+    let query = db.collection("profiles").where("userId", "==", userId);
 
     if (category) {
       query = query.where("category", "==", category);
@@ -152,7 +157,7 @@ export const getProfiles = async (req, res) => {
     const snapshot = await query.get();
     const profiles = snapshot.docs.map(serializeDoc);
 
-    noCache(res); // avoid stale lists coming back as 304s after edits
+    noCache(res);
     return res.status(200).json({
       success: true,
       data: profiles
@@ -163,10 +168,15 @@ export const getProfiles = async (req, res) => {
   }
 };
 
-// True Firestore aggregation (counts without reading every document)
+// Aggregated count strictly scoped to the logged-in user
 export const getGlobalCount = async (req, res) => {
   try {
-    const snapshot = await db.collection("profiles").count().get();
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Unauthorized user." });
+    }
+
+    const snapshot = await db.collection("profiles").where("userId", "==", userId).count().get();
     const count = snapshot.data().count;
 
     noCache(res);
@@ -182,6 +192,11 @@ export const getGlobalCount = async (req, res) => {
 
 export const updateProfile = async (req, res) => {
   try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Unauthorized user." });
+    }
+
     const profileId = req.params.id;
     const updateData = req.body;
 
@@ -193,10 +208,16 @@ export const updateProfile = async (req, res) => {
       return res.status(400).json({ success: false, error: "Update payload cannot be empty." });
     }
 
+    // Verify ownership before updating
+    const docRef = db.collection("profiles").doc(profileId.trim());
+    const docSnap = await docRef.get();
+
+    if (!docSnap.exists || docSnap.data().userId !== userId) {
+      return res.status(404).json({ success: false, error: "Profile not found." });
+    }
+
     const sanitizedUpdate = sanitizeProfileData(updateData);
 
-    // If a username was sent, it must still be valid after cleaning (previously a
-    // junk value could blank out or corrupt the username).
     if ("username" in sanitizedUpdate && !isValidHandle(sanitizedUpdate.username || "")) {
       return res.status(400).json({ success: false, error: "Valid username is required." });
     }
@@ -205,7 +226,7 @@ export const updateProfile = async (req, res) => {
       return res.status(400).json({ success: false, error: "No updatable fields provided." });
     }
 
-    const updatedProfile = await profileService.updateProfile(profileId.trim(), sanitizedUpdate);
+    const updatedProfile = await profileService.updateProfile(profileId.trim(), sanitizedUpdate, userId);
 
     return res.status(200).json({ success: true, message: "Profile updated successfully.", profile: updatedProfile });
   } catch (error) {
@@ -219,12 +240,25 @@ export const updateProfile = async (req, res) => {
 
 export const deleteProfile = async (req, res) => {
   try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Unauthorized user." });
+    }
+
     const profileId = req.params.id;
     if (!profileId || typeof profileId !== "string" || !profileId.trim()) {
       return res.status(400).json({ success: false, error: "Valid profile ID is required." });
     }
 
-    await profileService.deleteProfile(profileId.trim());
+    // Verify ownership before deleting
+    const docRef = db.collection("profiles").doc(profileId.trim());
+    const docSnap = await docRef.get();
+
+    if (!docSnap.exists || docSnap.data().userId !== userId) {
+      return res.status(404).json({ success: false, error: "Profile not found." });
+    }
+
+    await profileService.deleteProfile(profileId.trim(), userId);
     return res.status(200).json({ success: true, message: "Profile deleted successfully." });
   } catch (error) {
     console.error("Error deleting profile:", error);
@@ -237,12 +271,16 @@ export const deleteProfile = async (req, res) => {
 
 export const massUpload = async (req, res) => {
   try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Unauthorized user." });
+    }
+
     const { usernames } = req.body || {};
     if (!usernames || (typeof usernames !== "string" && !Array.isArray(usernames))) {
       return res.status(400).json({ success: false, error: "Usernames string or list is required." });
     }
 
-    // Guard against enormous payloads
     if (Array.isArray(usernames) && usernames.length > MAX_MASS_UPLOAD_ITEMS) {
       return res.status(413).json({ success: false, error: `Maximum ${MAX_MASS_UPLOAD_ITEMS} usernames per upload.` });
     }
@@ -250,7 +288,7 @@ export const massUpload = async (req, res) => {
       return res.status(413).json({ success: false, error: "Upload text is too large." });
     }
 
-    const result = await profileService.massUploadProfiles(usernames);
+    const result = await profileService.massUploadProfiles(usernames, userId);
     return res.status(200).json({ success: true, ...result });
   } catch (error) {
     console.error("Error in mass upload:", error);
@@ -260,14 +298,18 @@ export const massUpload = async (req, res) => {
 
 export const refreshVideos = async (req, res) => {
   try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Unauthorized user." });
+    }
+
     const { ids, force } = req.body;
     
     if (!ids || !Array.isArray(ids)) {
       return res.status(400).json({ success: false, error: "An array of IDs is required." });
     }
 
-    // Calls your service to handle the actual refresh logic
-    const result = await profileService.refreshVideos(ids, force); 
+    const result = await profileService.refreshVideos(ids, force, userId); 
     
     return res.status(200).json({ success: true, data: result });
   } catch (error) {

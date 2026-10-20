@@ -16,7 +16,6 @@ const LayersIcon = () => (
 const ArrowLeftIcon = () => (
   <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}>
     <line x1="19" y1="12" x2="5" y2="12"></line>
-    {/* FIX: points had an odd number of values ("12 19 5 12 5"), so the arrowhead was broken */}
     <polyline points="12 19 5 12 12 5"></polyline>
   </svg>
 );
@@ -58,9 +57,8 @@ const RefreshIcon = () => (
   </svg>
 );
 
-// Uses the .search-icon class from the stylesheet (positioned/sized/coloured there)
 const SearchIcon = () => (
-  <svg className="svg-icon search-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-faint)' }}>
     <circle cx="11" cy="11" r="8"></circle>
     <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
   </svg>
@@ -81,50 +79,32 @@ const defaultCoreCols = [
   { id: 'avgComments', label: 'Avg Comments', type: 'number' }
 ];
 
-const MAX_VISIBLE_ROWS = 50;
-const AUTO_PROCESS_DELAY_MS = 6000;
-
-// FIX: JSON.parse on a corrupted/missing localStorage value used to crash the whole page
-const readStorage = (key, fallback) => {
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw === null) return fallback;
-    const parsed = JSON.parse(raw);
-    return parsed ?? fallback;
-  } catch {
-    return fallback;
-  }
-};
-
 export default function StagingQueue() {
   const navigate = useNavigate();
   // Read video theme state from App.jsx Layout
   const { isVideoTheme } = useOutletContext() || { isVideoTheme: false };
-
+  
   const [stagedItems, setStagedItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [searchTerm, setSearchTerm] = useState("");
   const [bgVideoCount, setBgVideoCount] = useState(5);
-
-  const [processingIds, setProcessingIds] = useState(new Set());
+  
+  const [processingIds, setProcessingIds] = useState(new Set()); 
   const isAutoProcessingRef = useRef(false);
-  const attemptedRef = useRef(new Set()); // ids already auto-processed this session (prevents infinite loops)
-  const mountedRef = useRef(true);
-  const [queueTick, setQueueTick] = useState(0); // bumps after the cool-down so the queue continues
 
   // Sync with Dashboard's column edits
-  const [hiddenCols, setHiddenCols] = useState(() => readStorage('hiddenCols', []));
-  const [renamedCols, setRenamedCols] = useState(() => readStorage('renamedCols', {}));
-
+  const [hiddenCols, setHiddenCols] = useState(() => {
+    return JSON.parse(localStorage.getItem('hiddenCols')) || [];
+  });
+  
+  const [renamedCols, setRenamedCols] = useState(() => {
+    return JSON.parse(localStorage.getItem('renamedCols')) || {};
+  });
+  
   const [contextMenu, setContextMenu] = useState(null);
 
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => { mountedRef.current = false; };
-  }, []);
-
-  // Dynamic Background Video Calculator + close context menu on click
+  // Dynamic Background Video Calculator
   useEffect(() => {
     const calculateVideoCount = () => {
       const videoWidth = window.innerHeight * (9 / 16);
@@ -134,10 +114,12 @@ export default function StagingQueue() {
 
     calculateVideoCount();
     window.addEventListener('resize', calculateVideoCount);
-
-    const closeMenu = () => setContextMenu(null);
+    
+    const closeMenu = () => {
+      setContextMenu(null);
+    };
     window.addEventListener('click', closeMenu);
-
+    
     return () => {
       window.removeEventListener('resize', calculateVideoCount);
       window.removeEventListener('click', closeMenu);
@@ -148,49 +130,45 @@ export default function StagingQueue() {
     fetchStagingQueue(true);
   }, []);
 
-  // Keep columns in sync if changed in another tab/Dashboard
+  // Poll local storage to ensure columns stay synced if changed in Dashboard
   useEffect(() => {
     const syncCols = () => {
-      setHiddenCols(readStorage('hiddenCols', []));
-      setRenamedCols(readStorage('renamedCols', {}));
+      setHiddenCols(JSON.parse(localStorage.getItem('hiddenCols')) || []);
+      setRenamedCols(JSON.parse(localStorage.getItem('renamedCols')) || {});
     };
+    
     window.addEventListener('storage', syncCols);
-    return () => window.removeEventListener('storage', syncCols);
+    
+    return () => {
+      window.removeEventListener('storage', syncCols);
+    };
   }, []);
 
-  /*
-    FIX: auto-processing used to stall after the first item. The "busy" ref was
-    cleared by a setTimeout, but clearing a ref doesn't re-render, so the effect
-    never ran again. We now bump `queueTick` when the cool-down ends. We also
-    remember attempted ids so an item whose status never leaves
-    pending/scraping_done can't be re-processed forever.
-  */
   useEffect(() => {
-    if (isAutoProcessingRef.current) return;
-
-    const pendingItem = stagedItems.find(item =>
-      (item.status === 'pending' || item.status === 'scraping_done') &&
-      !processingIds.has(item.id) &&
-      !attemptedRef.current.has(item.id)
-    );
-
-    if (!pendingItem) return;
-
-    isAutoProcessingRef.current = true;
-    attemptedRef.current.add(pendingItem.id);
-
-    (async () => {
-      await handleProcessAISequence(pendingItem.id, pendingItem.status);
-      setTimeout(() => {
-        isAutoProcessingRef.current = false;
-        if (mountedRef.current) setQueueTick(t => t + 1);
-      }, AUTO_PROCESS_DELAY_MS);
-    })();
-  }, [stagedItems, processingIds, queueTick]);
+    const processNextPendingItem = async () => {
+      const pendingItem = stagedItems.find(item => 
+        (item.status === 'pending' || item.status === 'scraping_done') && !processingIds.has(item.id)
+      );
+      
+      if (pendingItem && !isAutoProcessingRef.current) {
+        isAutoProcessingRef.current = true; 
+        // Pass true to indicate this is an automatic background process
+        await handleProcessAISequence(pendingItem.id, pendingItem.status, null, true);
+        
+        setTimeout(() => { 
+          isAutoProcessingRef.current = false; 
+        }, 6000);
+      }
+    };
+    
+    processNextPendingItem();
+  }, [stagedItems, processingIds]);
 
   const fetchStagingQueue = async (showLoader = true) => {
-    if (showLoader) setLoading(true);
-
+    if (showLoader) {
+      setLoading(true);
+    }
+    
     try {
       const { data } = await api.get('/staging');
       setStagedItems(Array.isArray(data) ? data : data.data || []);
@@ -198,45 +176,53 @@ export default function StagingQueue() {
       console.error("Failed to fetch staging queue:", error);
       toast.error("Failed to fetch queue.");
     } finally {
-      if (showLoader) setLoading(false);
+      if (showLoader) {
+        setLoading(false);
+      }
     }
   };
 
   const setRowProcessing = (id, isProcessing) => {
     setProcessingIds(prev => {
       const next = new Set(prev);
-      if (isProcessing) next.add(id);
-      else next.delete(id);
+      if (isProcessing) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
       return next;
     });
   };
 
   const handleEditUsername = (id, currentName) => {
     const newName = window.prompt("Edit Username:", currentName === 'Unknown' ? '' : currentName);
-
-    if (newName && newName.trim() !== "" && newName.trim() !== currentName) {
+    
+    if (newName && newName.trim() !== "" && newName !== currentName) {
       const cleanedName = newName.trim();
       setStagedItems(prev => prev.map(item => item.id === id ? { ...item, username: cleanedName } : item));
-      handleProcessAISequence(id, 'pending', cleanedName);
+      handleProcessAISequence(id, 'pending', cleanedName, false);
       toast.success("Username updated!");
     }
   };
 
-  const handleProcessAISequence = async (id, currentStatus = 'pending', customUsername = null) => {
-    if (processingIds.has(id)) return;
-
+  // Added isAuto flag to prevent toast spam when Vercel 502s on background tasks
+  const handleProcessAISequence = async (id, currentStatus = 'pending', customUsername = null, isAuto = false) => {
+    if (processingIds.has(id)) {
+      return;
+    }
+    
     setRowProcessing(id, true);
-
+    
     try {
       const payload = customUsername ? { username: customUsername } : {};
-
+      
       if (currentStatus === 'pending' || currentStatus === 'failed') {
         await api.post(`/staging/${id}/process?step=scrape`, payload);
         setStagedItems(prev => prev.map(item => item.id === id ? { ...item, status: 'scraping_done' } : item));
       }
-
+      
       const { data } = await api.post(`/staging/${id}/process?step=analyze`, payload);
-
+      
       if (data.deleted) {
         setStagedItems(prev => prev.filter(item => item.id !== id));
       } else {
@@ -246,12 +232,13 @@ export default function StagingQueue() {
       if (error.response && error.response.status === 404) {
         setStagedItems(prev => prev.filter(item => item.id !== id));
       } else if (error.response && error.response.status === 429) {
-        // Rate limited: put it back in the queue and let auto-processing retry it later
-        attemptedRef.current.delete(id);
         setStagedItems(prev => prev.map(item => item.id === id ? { ...item, status: 'pending' } : item));
       } else {
         setStagedItems(prev => prev.map(item => item.id === id ? { ...item, status: 'failed' } : item));
-        toast.error("AI Analysis Failed.");
+        // Only show error toast if the user manually clicked "Scan"
+        if (!isAuto) {
+          toast.error("AI Analysis Failed.");
+        }
       }
     } finally {
       setRowProcessing(id, false);
@@ -259,10 +246,12 @@ export default function StagingQueue() {
   };
 
   const handleApprove = async (id) => {
-    if (processingIds.has(id)) return;
-
+    if (processingIds.has(id)) {
+      return;
+    }
+    
     setRowProcessing(id, true);
-
+    
     try {
       await api.post(`/staging/${id}/approve`);
       setStagedItems(prev => prev.filter(item => item.id !== id));
@@ -281,10 +270,12 @@ export default function StagingQueue() {
   };
 
   const handleDelete = async (id) => {
-    if (processingIds.has(id)) return;
-
+    if (processingIds.has(id)) {
+      return;
+    }
+    
     setRowProcessing(id, true);
-
+    
     try {
       await api.delete(`/staging/${id}`);
       setStagedItems(prev => prev.filter(item => item.id !== id));
@@ -302,45 +293,45 @@ export default function StagingQueue() {
   };
 
   const filteredItems = useMemo(() => {
-    if (!searchTerm) return stagedItems;
-
+    if (!searchTerm) {
+      return stagedItems;
+    }
+    
     const lower = searchTerm.toLowerCase();
-
-    return stagedItems.filter(item =>
-      (item.username && item.username.toLowerCase().includes(lower)) ||
+    
+    return stagedItems.filter(item => 
+      (item.username && item.username.toLowerCase().includes(lower)) || 
       (item.url && item.url.toLowerCase().includes(lower))
     );
   }, [stagedItems, searchTerm]);
 
-  // Only the rows actually rendered. FIX: "select all" used to select every filtered
-  // item, including rows beyond the 50 shown, so "Approve Selected" could approve
-  // profiles the user never saw.
-  const visibleItems = useMemo(() => filteredItems.slice(0, MAX_VISIBLE_ROWS), [filteredItems]);
-
-  const allVisibleSelected = visibleItems.length > 0 && visibleItems.every(item => selectedIds.has(item.id));
-
   const handleToggleSelectAll = () => {
-    if (allVisibleSelected) {
+    if (selectedIds.size === filteredItems.length && filteredItems.length > 0) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(visibleItems.map(item => item.id)));
+      setSelectedIds(new Set(filteredItems.map(item => item.id)));
     }
   };
 
   const handleToggleSelect = (id) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
       return next;
     });
   };
 
   const handleBulkApprove = async () => {
-    if (selectedIds.size === 0) return;
-
+    if (selectedIds.size === 0) {
+      return;
+    }
+    
     setLoading(true);
-
+    
     try {
       await api.post('/staging/bulk-approve', { ids: Array.from(selectedIds) });
       setStagedItems(prev => prev.filter(item => !selectedIds.has(item.id)));
@@ -355,52 +346,60 @@ export default function StagingQueue() {
   };
 
   const handleApproveAll = async () => {
-    if (stagedItems.length === 0) return;
-
+    if (stagedItems.length === 0) {
+      return;
+    }
+    
     if (!window.confirm(`Are you sure you want to approve ALL ${stagedItems.length} profiles? This will process in batches.`)) {
       return;
     }
-
+    
     setLoading(true);
-
+    
     const allIds = stagedItems.map(item => item.id);
     setStagedItems([]);
     setSelectedIds(new Set());
-
-    const BATCH_SIZE = 100;
+    
+    // Reduced batch size to 50 to prevent Vercel execution timeouts
+    const BATCH_SIZE = 50;
 
     try {
       for (let i = 0; i < allIds.length; i += BATCH_SIZE) {
-        await api.post('/staging/bulk-approve', { ids: allIds.slice(i, i + BATCH_SIZE) });
+        const batch = allIds.slice(i, i + BATCH_SIZE);
+        await api.post('/staging/bulk-approve', { ids: batch });
       }
       toast.success("All items successfully approved!");
     } catch (error) {
       console.error("A batch failed during Approve All:", error);
       toast.error("A batch failed to process.");
-      fetchStagingQueue(false);
+      fetchStagingQueue(false); 
     } finally {
       setLoading(false);
     }
   };
 
   const handleDeleteAll = async () => {
-    if (stagedItems.length === 0) return;
-
+    if (stagedItems.length === 0) {
+      return;
+    }
+    
     if (!window.confirm(`Are you sure you want to PERMANENTLY DELETE ALL ${stagedItems.length} items?`)) {
       return;
     }
-
+    
     setLoading(true);
-
+    
     const allIds = stagedItems.map(item => item.id);
     setStagedItems([]);
     setSelectedIds(new Set());
-
-    const BATCH_SIZE = 100;
+    
+    // Reduced batch size to 50 to prevent Vercel execution timeouts
+    const BATCH_SIZE = 50;
 
     try {
       for (let i = 0; i < allIds.length; i += BATCH_SIZE) {
-        await api.post('/staging/bulk-delete', { ids: allIds.slice(i, i + BATCH_SIZE) });
+        const batch = allIds.slice(i, i + BATCH_SIZE);
+        await api.post('/staging/bulk-delete', { ids: batch });
       }
       toast.success("All items permanently deleted.");
     } catch (error) {
@@ -414,86 +413,80 @@ export default function StagingQueue() {
 
   const handleContextMenu = (e, colId, colName) => {
     e.preventDefault();
-    setContextMenu({
-      x: Math.min(e.clientX, window.innerWidth - 200),   // keep the menu on-screen
-      y: Math.min(e.clientY, window.innerHeight - 130),
-      colId,
-      colName
+    setContextMenu({ 
+      x: e.clientX, 
+      y: e.clientY, 
+      colId, 
+      colName 
     });
   };
 
   const renderAttr = (attr) => {
-    if (!attr) return '-';
-    if (typeof attr === 'object') return attr.value || '-';
+    if (!attr) {
+      return '-';
+    }
+    
+    if (typeof attr === 'object' && attr !== null) {
+      return attr.value || '-';
+    }
+    
     return attr;
   };
 
-  // Videos for the themed background. FIX: no longer falls back to item.url (an
-  // Instagram page link, not a playable video file).
-  const bgVideos = useMemo(
-    () => filteredItems.filter(p => p.videoPreviewUrl).slice(0, bgVideoCount),
-    [filteredItems, bgVideoCount]
-  );
-
-  const usernameLabel = renamedCols.username || 'Username';
-  const linkLabel = renamedCols.link || 'Link';
-
   return (
     <div className="dashboard-container relative flex flex-col h-full overflow-hidden">
-
+      
       {isVideoTheme && (
         <div className="video-bg-container">
-          {bgVideos.map((p) => (
-            <video
-              key={p.id}
-              src={p.videoPreviewUrl}
-              autoPlay
-              loop
-              muted
-              playsInline
+          {filteredItems.filter(p => p.videoPreviewUrl || p.url).slice(0, bgVideoCount).map((p, i) => (
+            <video 
+              key={i} 
+              src={p.videoPreviewUrl || p.url} 
+              autoPlay 
+              loop 
+              muted 
+              playsInline 
             />
           ))}
         </div>
       )}
 
-      {/* Header Panel */}
-      <div className="glass-panel staging-header-panel p-5 mb-4 flex flex-col md:flex-row justify-between items-center gap-4 flex-shrink-0 z-20">
+      {/* FIXED Header Panel */}
+      <div className="glass-panel p-5 mb-4 flex flex-col md:flex-row justify-between items-center gap-4 flex-shrink-0 z-20">
         <div>
-          <h1 className="text-xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--text-main)', margin: 0 }}>
+          <h1 className="text-xl font-bold text-gray-800" style={{ fontFamily: 'var(--font-display)' }}>
             Staging Queue
           </h1>
-          <p className="text-sm" style={{ color: 'var(--text-muted)', margin: '4px 0 0' }}>
+          <p className="text-sm text-gray-500">
             Review AI-extracted profiles before pushing live.
           </p>
         </div>
 
-        <div className="flex items-center gap-3" style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-          <div className="search-bar-container" style={{ width: 280, marginBottom: 0 }}>
+        <div className="flex items-center gap-3">
+          <div className="search-bar-container max-w-xs relative flex items-center">
             <SearchIcon />
-            <input
-              type="text"
-              className="search-input"
-              placeholder="Search usernames..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+            <input 
+              type="text" 
+              placeholder="Search usernames..." 
+              value={searchTerm} 
+              onChange={(e) => setSearchTerm(e.target.value)} 
+              className="w-full"
             />
           </div>
-
-          <button onClick={() => navigate('/dashboard')} className="action-btn btn-outline">
+          
+          <button 
+            onClick={() => navigate('/dashboard')} 
+            className="action-btn btn-outline"
+          >
             <ArrowLeftIcon /> Back to Dashboard
           </button>
-
-          <button onClick={() => fetchStagingQueue(true)} disabled={loading} className="action-btn btn-outline">
+          
+          <button 
+            onClick={() => fetchStagingQueue(true)} 
+            disabled={loading} 
+            className="action-btn btn-outline"
+          >
             <RefreshIcon /> Refresh
-          </button>
-
-          {/* These handlers existed but nothing ever called them */}
-          <button onClick={handleApproveAll} disabled={loading || stagedItems.length === 0} className="action-btn btn-primary btn-success">
-            <CheckIcon /> Approve All
-          </button>
-
-          <button onClick={handleDeleteAll} disabled={loading || stagedItems.length === 0} className="action-btn btn-danger">
-            <TrashIcon /> Delete All
           </button>
         </div>
       </div>
@@ -501,156 +494,145 @@ export default function StagingQueue() {
       <GarbageEater onSuccess={() => fetchStagingQueue(false)} />
 
       {selectedIds.size > 0 && (
-        <div
-          className="glass-panel p-4 mb-4 flex justify-between items-center flex-shrink-0"
-          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', marginBottom: 16, background: 'rgba(253, 242, 248, 0.85)', borderColor: '#fbcfe8' }}
-        >
-          <span style={{ fontWeight: 700, color: 'var(--primary-hover)' }}>
+        <div className="glass-panel p-4 mb-4 flex justify-between items-center flex-shrink-0" style={{ background: '#fdf2f8', borderColor: '#fbcfe8' }}>
+          <span className="font-bold text-pink-700">
             {selectedIds.size} items selected
           </span>
-          <button onClick={handleBulkApprove} disabled={loading} className="action-btn btn-primary">
+          <button onClick={handleBulkApprove} className="action-btn btn-primary">
             <CheckIcon /> Approve Selected
           </button>
         </div>
       )}
 
       {/* SCROLLABLE Table Layout */}
-      <div className="table-wrapper glass-panel">
-        <table className="profile-table">
+      <div className="table-wrapper flex-1 overflow-y-auto overflow-x-auto min-h-0">
+        <table className="profile-table w-full">
           <thead>
             <tr>
-              <th style={{ width: 40, textAlign: 'center' }}>
-                <input
-                  type="checkbox"
-                  checked={allVisibleSelected}
-                  onChange={handleToggleSelectAll}
+              <th className="w-10 text-center">
+                <input 
+                  type="checkbox" 
+                  checked={filteredItems.length > 0 && selectedIds.size === filteredItems.length} 
+                  onChange={handleToggleSelectAll} 
                 />
               </th>
-
+              
               {!hiddenCols.includes('username') && (
-                <th
-                  onContextMenu={(e) => handleContextMenu(e, 'username', usernameLabel)}
-                  style={{ cursor: 'context-menu' }}
+                <th 
+                  onContextMenu={(e) => handleContextMenu(e, 'username', 'Username')} 
+                  style={{ cursor: 'pointer' }}
                 >
-                  {usernameLabel}
+                  Username
                 </th>
               )}
-
+              
               {!hiddenCols.includes('link') && (
-                <th
-                  onContextMenu={(e) => handleContextMenu(e, 'link', linkLabel)}
-                  style={{ cursor: 'context-menu' }}
-                >
-                  {linkLabel}
-                </th>
+                <th>Link</th>
               )}
-
+              
               {defaultCoreCols.map(col => {
                 if (hiddenCols.includes(col.id)) return null;
-
+                
                 const displayLabel = renamedCols[col.id] || col.label;
-
+                
                 return (
-                  <th
-                    key={col.id}
-                    onContextMenu={(e) => handleContextMenu(e, col.id, displayLabel)}
-                    style={{ cursor: 'context-menu' }}
+                  <th 
+                    key={col.id} 
+                    onContextMenu={(e) => handleContextMenu(e, col.id, displayLabel)} 
+                    style={{ cursor: 'pointer' }}
                   >
                     {displayLabel}
                   </th>
                 );
               })}
-
-              <th style={{ textAlign: 'right' }}>Actions</th>
+              
+              <th className="text-right">Actions</th>
             </tr>
           </thead>
-
+          
           <tbody>
-            {visibleItems.length === 0 ? (
+            {filteredItems.length === 0 ? (
               <tr>
-                <td colSpan={defaultCoreCols.length + 4} style={{ textAlign: 'center', padding: '40px 16px', color: 'var(--text-faint)', fontStyle: 'italic' }}>
-                  {loading ? 'Loading...' : 'No profiles currently waiting.'}
+                <td colSpan="15" className="text-center py-10 text-gray-400 italic">
+                  No profiles currently waiting.
                 </td>
               </tr>
             ) : (
-              visibleItems.map((item) => {
+              filteredItems.slice(0, 50).map((item) => {
                 const isSelected = selectedIds.has(item.id);
                 const isProcessingRow = processingIds.has(item.id);
-
+                
                 return (
-                  <tr
-                    key={item.id}
-                    style={{
-                      opacity: isProcessingRow ? 0.6 : 1,
-                      pointerEvents: isProcessingRow ? 'none' : 'auto',
-                      background: isSelected ? 'rgba(244, 114, 168, 0.2)' : undefined
-                    }}
+                  <tr 
+                    key={item.id} 
+                    className={isSelected ? 'bg-pink-50' : ''} 
+                    style={{ opacity: isProcessingRow ? 0.6 : 1, pointerEvents: isProcessingRow ? 'none' : 'auto' }}
                   >
-                    <td style={{ textAlign: 'center' }}>
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => handleToggleSelect(item.id)}
+                    <td className="text-center">
+                      <input 
+                        type="checkbox" 
+                        checked={isSelected} 
+                        onChange={() => handleToggleSelect(item.id)} 
                       />
                     </td>
-
+                    
                     {!hiddenCols.includes('username') && (
-                      <td
-                        style={{ fontWeight: 700, cursor: 'pointer' }}
-                        title="Click to edit username"
+                      <td 
+                        className="font-bold text-gray-800 cursor-pointer hover:bg-gray-50 transition-colors" 
                         onClick={() => handleEditUsername(item.id, item.username)}
                       >
                         {item.username || 'Unknown'}
                       </td>
                     )}
-
+                    
                     {!hiddenCols.includes('link') && (
                       <td>
                         {item.url ? (
-                          <a
-                            href={item.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="action-btn btn-outline"
-                            style={{ padding: '4px 8px', textDecoration: 'none' }}
+                          <a 
+                            href={item.url} 
+                            target="_blank" 
+                            rel="noreferrer" 
+                            className="action-btn btn-outline" 
+                            style={{ padding: '4px 8px' }}
                           >
-                            View <ExternalLinkIcon />
+                            View
                           </a>
                         ) : '-'}
                       </td>
                     )}
-
+                    
                     {defaultCoreCols.map(col => {
                       if (hiddenCols.includes(col.id)) return null;
-
+                      
                       return (
                         <td key={col.id}>
                           {renderAttr(item[col.id])}
                         </td>
                       );
                     })}
-
+                    
                     <td>
-                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                        <button
-                          className="action-btn btn-outline"
-                          onClick={() => handleProcessAISequence(item.id, item.status)}
+                      <div className="flex justify-end gap-2">
+                        <button 
+                          className="action-btn btn-outline" 
+                          onClick={() => handleProcessAISequence(item.id, item.status, null, false)}
                         >
-                          <SparkleIcon />&nbsp;Scan
+                          <SparkleIcon /> Scan
                         </button>
-
-                        <button
-                          className="action-btn btn-primary btn-success"
+                        
+                        <button 
+                          className="action-btn btn-primary" 
+                          style={{ background: '#059669', borderColor: '#059669' }} 
                           onClick={() => handleApprove(item.id)}
                         >
-                          <CheckIcon />&nbsp;Approve
+                          <CheckIcon /> Approve
                         </button>
-
-                        <button
-                          className="action-btn btn-danger"
+                        
+                        <button 
+                          className="action-btn btn-danger" 
                           onClick={() => handleDelete(item.id)}
                         >
-                          <TrashIcon />&nbsp;Reject
+                          <TrashIcon /> Reject
                         </button>
                       </div>
                     </td>
@@ -660,49 +642,39 @@ export default function StagingQueue() {
             )}
           </tbody>
         </table>
-
-        {filteredItems.length > MAX_VISIBLE_ROWS && (
-          <div style={{ padding: '12px 16px', textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>
-            Showing {MAX_VISIBLE_ROWS} of {filteredItems.length} profiles. Approve or reject some to see more.
-          </div>
-        )}
       </div>
 
       {contextMenu && (
-        <div
-          className="context-menu"
-          onClick={(e) => e.stopPropagation()}
-          style={{ position: 'fixed', top: contextMenu.y, left: contextMenu.x, zIndex: 2000 }}
-        >
-          <div className="context-menu-title">
+        <div className="context-menu" style={{ top: contextMenu.y, left: contextMenu.x }}>
+          <div style={{ padding: '4px 8px', fontSize: '11px', color: '#6b7280', textTransform: 'uppercase', marginBottom: '4px' }}>
             Column: {contextMenu.colName}
           </div>
-
-          <button
+          
+          <button 
             onClick={() => {
-              const newName = window.prompt("Rename Column:", contextMenu.colName);
-
+              const newName = window.prompt("Rename Core Column:", contextMenu.colName);
+              
               if (newName && newName.trim()) {
                 const updated = { ...renamedCols, [contextMenu.colId]: newName.trim() };
                 setRenamedCols(updated);
                 localStorage.setItem('renamedCols', JSON.stringify(updated));
               }
-
+              
               setContextMenu(null);
             }}
           >
             ✎ Rename / Edit
           </button>
-
-          <button
+          
+          <button 
             className="danger"
             onClick={() => {
               if (window.confirm(`Hide ${contextMenu.colName}?`)) {
-                const updated = Array.from(new Set([...hiddenCols, contextMenu.colId]));
+                const updated = [...hiddenCols, contextMenu.colId];
                 setHiddenCols(updated);
                 localStorage.setItem('hiddenCols', JSON.stringify(updated));
               }
-
+              
               setContextMenu(null);
             }}
           >

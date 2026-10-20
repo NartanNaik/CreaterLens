@@ -4,7 +4,7 @@ const API_URL = import.meta.env.VITE_API_URL || "";
 
 const api = axios.create({
   baseURL: `${API_URL}/api`,
-  timeout: 30000
+  timeout: 60000 
 });
 
 // State for the token-refresh queue
@@ -22,13 +22,12 @@ const processQueue = (error, token = null) => {
   failedQueue = [];
 };
 
-// Login/refresh failures must NOT trigger the refresh-and-logout flow. A wrong password is a
-// normal 401; handling it as an expired session wiped storage and hard-reloaded /login.
-const isAuthRequest = (config) => /\/auth\/(login|refresh)/.test(config?.url || "");
+// Login/refresh failures must NOT trigger the refresh-and-logout flow.
+// Updated to match the new Google auth route.
+const isAuthRequest = (config) => /\/auth\/(google|refresh)/.test(config?.url || "");
 
 const forceLogout = () => {
   localStorage.removeItem("token");
-  localStorage.removeItem("refreshToken");
   localStorage.removeItem("user");
   if (window.location.pathname !== "/login") {
     window.location.href = "/login";
@@ -62,7 +61,7 @@ api.interceptors.response.use(
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
         }).then((token) => {
-          originalRequest._retry = true; // so a second failure can't start another refresh cycle
+          originalRequest._retry = true;
           originalRequest.headers.Authorization = `Bearer ${token}`;
           return api(originalRequest);
         });
@@ -72,19 +71,18 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const refreshToken = localStorage.getItem("refreshToken");
-        if (!refreshToken) throw new Error("No refresh token available");
+        const currentToken = localStorage.getItem("token");
+        if (!currentToken) throw new Error("No token available to refresh");
 
-        // Plain axios (not `api`) so this call can't recurse into this interceptor
-        const { data } = await axios.post(`${API_URL}/api/auth/refresh`, { refreshToken });
+        // Use plain axios to bypass interceptors, sending the expired token in the header
+        const { data } = await axios.post(`${API_URL}/api/auth/refresh`, {}, {
+          headers: { Authorization: `Bearer ${currentToken}` }
+        });
 
-        const newToken = data.token || data.accessToken;
+        const newToken = data.token;
         if (!newToken) throw new Error("Refresh response did not include a token");
 
         localStorage.setItem("token", newToken);
-        if (data.refreshToken) {
-          localStorage.setItem("refreshToken", data.refreshToken);
-        }
 
         originalRequest.headers.Authorization = `Bearer ${newToken}`;
         processQueue(null, newToken);
@@ -103,14 +101,6 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
-
-export const login = async (id, password) => {
-  const { data } = await api.post("/auth/login", {
-    id,
-    password
-  });
-  return data;
-};
 
 // --- Matches routes/profileRoutes.js (mounted at /api/profiles) ---
 

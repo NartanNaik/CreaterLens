@@ -3,9 +3,11 @@ import * as bloomFilterService from "../services/bloomFilterService.js";
 import * as scraperService from "../services/scraperService.js";
 import * as aiService from "../services/aiService.js";
 import * as profileService from "../services/profileService.js";
+import { decryptKey } from "../services/encryptionService.js";
 
 const stagingCollection = db.collection("staging");
 const profilesCollection = db.collection("profiles");
+const usersCollection = db.collection("users");
 
 // ---------- constants ----------
 const HANDLE_REGEX = /^[A-Za-z0-9._]{1,30}$/;
@@ -19,11 +21,9 @@ const MAX_QUEUE_LIMIT = 2000;
 const MAX_CAPTION_LENGTH = 2000;
 
 // Server-side fetches (thumbnails -> AI) are only allowed against Instagram's own CDNs.
-// Without this a client could submit any URL via bulk import and make the server fetch it (SSRF).
 const MEDIA_HOST_REGEX = /(^|\.)(cdninstagram\.com|fbcdn\.net|instagram\.com)$/i;
 
-// Account types that get auto-rejected. Word boundaries matter: a plain
-// includes("male") also matches "female", which would auto-delete every female account.
+// Account types that get auto-rejected.
 const REJECT_ACCOUNT_REGEX = /\b(male|man|brand|business|company)\b/i;
 
 // ---------- helpers ----------
@@ -85,21 +85,26 @@ const shortcodeOf = (url) => {
   return match ? match[1] : "";
 };
 
-const markFailed = async (id) => {
+const markFailed = async (id, userId) => {
   try {
-    await stagingCollection.doc(id).update({ status: "failed" });
+    const docRef = stagingCollection.doc(id);
+    const snap = await docRef.get();
+    if (snap.exists && snap.data().userId === userId) {
+      await docRef.update({ status: "failed" });
+    }
   } catch {
     // The doc may have been deleted meanwhile; nothing to mark.
   }
 };
 
-// Builds the approved-profile document from a staging document
-const buildProfileFromStaging = (item) => {
+// Builds the approved-profile document from a staging document scoped to the user
+const buildProfileFromStaging = (item, userId) => {
   const username = (typeof item.username === "string" && item.username.trim()) || "Unknown";
 
   return {
+    userId,
     username,
-    normalizedUsername: username.toLowerCase(),   // checkProfileExists relies on this field
+    normalizedUsername: username.toLowerCase(),
     contact: item.contact || "",
     nation: cleanAttr(item.nation),
     skinTone: cleanAttr(item.skinTone),
@@ -113,36 +118,42 @@ const buildProfileFromStaging = (item) => {
     avgComments: toCount(item.avgComments),
     playable: false,
     sourceUrl: item.url || "",
-    // The video theme reads this. Falls back to tempScrapeData for older staging docs.
     videoPreviewUrl: item.videoPreviewUrl || item.tempScrapeData?.videoUrl || "",
     thumbnailUrl: item.thumbnailUrl || item.tempScrapeData?.thumbnailUrl || "",
     createdAt: new Date().toISOString()
   };
 };
 
-// Shared by share + bulk import. Returns { added } or { skipped, reason }.
-const stageReel = async ({ reelUrl, handle, thumbnailUrl = "", caption = "" }) => {
+// Shared by share + bulk import. Scoped to each user.
+const stageReel = async ({ reelUrl, handle, thumbnailUrl = "", caption = "", userId }) => {
   const normalizedHandle = handle.toLowerCase().trim();
   const isUnknown = normalizedHandle === "unknown";
 
-  if (!isUnknown && bloomFilterService.has(normalizedHandle)) {
-    const exists = await profileService.checkProfileExists(normalizedHandle);
-    if (exists) return { skipped: true, username: normalizedHandle, reason: "Creator already in database" };
+  if (!isUnknown && bloomFilterService.has(`${userId}_${normalizedHandle}`)) {
+    const exists = await profileService.checkProfileExists(normalizedHandle, userId);
+    if (exists) return { skipped: true, username: normalizedHandle, reason: "Creator already in your database" };
   }
 
-  // Compared in JS because stored usernames keep their original case; the old
-  // where("username","==",lowercase) query never matched mixed-case handles.
-  const stagingCheck = await stagingCollection.where("url", "==", reelUrl).get();
+  const stagingCheck = await stagingCollection
+    .where("userId", "==", userId)
+    .where("url", "==", reelUrl)
+    .get();
+
   if (stagingCheck.docs.some((d) => (d.data().username || "").toLowerCase() === normalizedHandle)) {
-    return { skipped: true, username: normalizedHandle, reason: "Already pending in staging queue" };
+    return { skipped: true, username: normalizedHandle, reason: "Already pending in your staging queue" };
   }
 
-  const profileUrlCheck = await profilesCollection.where("sourceUrl", "==", reelUrl).get();
+  const profileUrlCheck = await profilesCollection
+    .where("userId", "==", userId)
+    .where("sourceUrl", "==", reelUrl)
+    .get();
+
   if (profileUrlCheck.docs.some((d) => (d.data().username || "").toLowerCase() === normalizedHandle)) {
-    return { skipped: true, username: normalizedHandle, reason: "Creator from this reel already exists in approved profiles database" };
+    return { skipped: true, username: normalizedHandle, reason: "Creator from this reel already exists in your approved profiles" };
   }
 
   const stagingDoc = {
+    userId,
     url: reelUrl,
     username: handle,
     normalizedUsername: normalizedHandle,
@@ -153,18 +164,17 @@ const stageReel = async ({ reelUrl, handle, thumbnailUrl = "", caption = "" }) =
     createdAt: new Date().toISOString()
   };
 
-  // Natural ID (shortcode + creator) so concurrent submissions can't create duplicates:
-  // create() fails atomically if the document already exists.
   const shortcode = shortcodeOf(reelUrl);
 
   if (shortcode) {
-    const docId = `${shortcode}_${normalizedHandle.replace(/[^a-z0-9._-]/g, "_")}`;
+    const cleanUserKey = userId.replace(/[^a-zA-Z0-9_-]/g, "");
+    const docId = `${cleanUserKey}_${shortcode}_${normalizedHandle.replace(/[^a-z0-9._-]/g, "_")}`;
     try {
       await stagingCollection.doc(docId).create(stagingDoc);
       return { added: { id: docId, ...stagingDoc } };
     } catch (err) {
       if (err?.code === 6 || /already exists/i.test(err?.message || "")) {
-        return { skipped: true, username: normalizedHandle, reason: "Already pending in staging queue" };
+        return { skipped: true, username: normalizedHandle, reason: "Already pending in your staging queue" };
       }
       throw err;
     }
@@ -177,6 +187,11 @@ const stageReel = async ({ reelUrl, handle, thumbnailUrl = "", caption = "" }) =
 // ---------- controllers ----------
 export const shareReelController = async (req, res) => {
   try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Unauthorized user." });
+    }
+
     const { url, text, title } = req.body || {};
     const rawContent = `${url || ""} ${text || ""} ${title || ""}`.trim();
 
@@ -196,7 +211,6 @@ export const shareReelController = async (req, res) => {
     const skipped = [];
 
     for (const reelUrl of reelUrls) {
-      // One bad reel must not fail the whole request
       let parsedMeta = {};
       try {
         parsedMeta = (await scraperService.extractBasicInfo(reelUrl)) || {};
@@ -215,7 +229,8 @@ export const shareReelController = async (req, res) => {
             reelUrl,
             handle,
             thumbnailUrl: parsedMeta.thumbnailUrl,
-            caption: parsedMeta.caption
+            caption: parsedMeta.caption,
+            userId
           });
 
           if (result.added) added.push(result.added);
@@ -246,6 +261,11 @@ export const shareReelController = async (req, res) => {
 
 export const bulkImportStagingItemsController = async (req, res) => {
   try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Unauthorized user." });
+    }
+
     const { items } = req.body || {};
 
     if (!items || !Array.isArray(items) || items.length === 0) {
@@ -288,8 +308,9 @@ export const bulkImportStagingItemsController = async (req, res) => {
         const result = await stageReel({
           reelUrl,
           handle,
-          thumbnailUrl: item.thumbnailUrl,   // validated against the CDN allowlist inside stageReel
-          caption: item.caption
+          thumbnailUrl: item.thumbnailUrl,
+          caption: item.caption,
+          userId
         });
 
         if (result.added) added.push(result.added);
@@ -316,16 +337,26 @@ export const bulkImportStagingItemsController = async (req, res) => {
 
 export const getStagingQueueController = async (req, res) => {
   try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Unauthorized user." });
+    }
+
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
     res.setHeader("Pragma", "no-cache");
     res.setHeader("Expires", "0");
     res.setHeader("Surrogate-Control", "no-store");
 
-    // Optional ?limit= keeps Firestore reads bounded (default 1000, max 2000)
     const requested = parseInt(req.query.limit, 10);
     const limit = Math.min(Number.isFinite(requested) && requested > 0 ? requested : DEFAULT_QUEUE_LIMIT, MAX_QUEUE_LIMIT);
 
-    const snapshot = await stagingCollection.orderBy("createdAt", "desc").limit(limit).get();
+    // Strictly multi-tenant: filter by logged-in userId
+    const snapshot = await stagingCollection
+      .where("userId", "==", userId)
+      .orderBy("createdAt", "desc")
+      .limit(limit)
+      .get();
+
     const items = snapshot.docs.map((doc) => {
       const data = doc.data();
       for (const [key, value] of Object.entries(data)) {
@@ -343,8 +374,13 @@ export const getStagingQueueController = async (req, res) => {
 
 export const processStagingItemController = async (req, res) => {
   const { id } = req.params;
+  const userId = req.user?.id;
 
   try {
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Unauthorized user." });
+    }
+
     const { step } = req.query;
     const body = req.body || {};
 
@@ -367,7 +403,7 @@ export const processStagingItemController = async (req, res) => {
     const docRef = stagingCollection.doc(id);
     const docSnap = await docRef.get();
 
-    if (!docSnap.exists) {
+    if (!docSnap.exists || docSnap.data().userId !== userId) {
       return res.status(200).json({
         success: true,
         deleted: true,
@@ -390,7 +426,6 @@ export const processStagingItemController = async (req, res) => {
         richMedia = (await scraperService.fetchFullReelMedia(itemData.url, itemData.username)) || {};
       } catch (scrapeError) {
         if (isRateLimitError(scrapeError)) {
-          // Leave status untouched so the item is retried, and tell the client to back off
           return res.status(429).json({ success: false, error: "Scraper is rate limited. Retrying shortly." });
         }
         throw scrapeError;
@@ -409,7 +444,7 @@ export const processStagingItemController = async (req, res) => {
       return res.status(200).json({ success: true, message: "Scrape complete, ready for AI." });
     }
 
-    // ---------- STEP 2: analyze ----------
+    // ---------- STEP 2: analyze (using decrypted personal sub-key) ----------
     const targetData = itemData.tempScrapeData || {
       videoUrl: itemData.videoPreviewUrl || "",
       thumbnailUrl: itemData.thumbnailUrl,
@@ -417,19 +452,32 @@ export const processStagingItemController = async (req, res) => {
       username: itemData.username
     };
 
-    // Never hand an unvetted URL to the AI service, which fetches the thumbnail server-side
     const thumbnailUrl = safeMediaUrl(targetData.thumbnailUrl);
     const videoUrl = safeMediaUrl(targetData.videoUrl);
+
+    // Retrieve and decrypt the user's personal $0 sub-key
+    let userApiKey = null;
+    try {
+      const userDoc = await usersCollection.doc(userId).get();
+      if (userDoc.exists && userDoc.data().encryptedOrKey) {
+        userApiKey = decryptKey(userDoc.data().encryptedOrKey);
+      }
+    } catch (keyErr) {
+      console.error("Failed to decrypt user OpenRouter key:", keyErr?.message || keyErr);
+    }
 
     let aiResult = null;
 
     try {
-      aiResult = await aiService.analyzeReelMedia({
-        videoUrl,
-        thumbnailUrl,
-        caption: targetData.caption,
-        username: targetData.username
-      });
+      aiResult = await aiService.analyzeReelMedia(
+        {
+          videoUrl,
+          thumbnailUrl,
+          caption: targetData.caption,
+          username: targetData.username
+        },
+        { userApiKey } // Forwarded to AI service to route through user's key
+      );
 
       if (!aiResult || typeof aiResult !== "object") {
         throw new Error("Invalid AI Response format returned");
@@ -438,11 +486,10 @@ export const processStagingItemController = async (req, res) => {
       console.error(`[AI Fallback] Failed for ${targetData.username}. Reason: ${aiError.message}`);
 
       if (isRateLimitError(aiError)) {
-        // Not a real failure: keep the item as-is and let the client retry after its cool-down
         return res.status(429).json({ success: false, error: "AI providers are rate limited. Retrying shortly." });
       }
 
-      await markFailed(id);
+      await markFailed(id, userId);
       return res.status(502).json({ success: false, error: "AI analysis failed.", status: "failed" });
     }
 
@@ -473,15 +520,11 @@ export const processStagingItemController = async (req, res) => {
       avgViewsPerWeek: toCount(aiResult.avgViewsPerWeek),
       avgLikes: toCount(aiResult.avgLikes),
       avgComments: toCount(aiResult.avgComments),
-      // Persisted on the staging doc because tempScrapeData is deleted below.
-      // Without this the video URL was lost before approval, so approved profiles had no video.
       videoPreviewUrl: videoUrl,
       thumbnailUrl,
       status: "analyzed"
     };
 
-    // FieldValue is imported directly. The old `db.FieldValue` was always undefined,
-    // so tempScrapeData was never actually removed.
     await docRef.update({ ...updates, tempScrapeData: FieldValue.delete() });
 
     return res.status(200).json({
@@ -494,15 +537,19 @@ export const processStagingItemController = async (req, res) => {
     });
   } catch (error) {
     console.error("CRITICAL Backend Error analyzing staging reel:", error?.stack || error);
-    if (isValidDocId(id)) await markFailed(id);
-    // The raw error.message used to be returned to the client; keep internals in the logs
+    if (isValidDocId(id)) await markFailed(id, userId);
     return res.status(500).json({ success: false, error: "Failed to process reel." });
   }
 };
 
 export const approveStagingItemController = async (req, res) => {
   try {
+    const userId = req.user?.id;
     const { id } = req.params;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Unauthorized user." });
+    }
 
     if (!isValidDocId(id)) {
       return res.status(400).json({ success: false, error: "A valid staging item ID is required." });
@@ -511,7 +558,7 @@ export const approveStagingItemController = async (req, res) => {
     const docRef = stagingCollection.doc(id);
     const docSnap = await docRef.get();
 
-    if (!docSnap.exists) {
+    if (!docSnap.exists || docSnap.data().userId !== userId) {
       return res.status(200).json({
         success: true,
         deleted: true,
@@ -520,22 +567,20 @@ export const approveStagingItemController = async (req, res) => {
       });
     }
 
-    const newProfile = buildProfileFromStaging(docSnap.data());
+    const newProfile = buildProfileFromStaging(docSnap.data(), userId);
     const normalized = newProfile.normalizedUsername;
 
-    // One profile per creator: if they were approved already, just clear the staging item
-    if (normalized !== "unknown" && (await profileService.checkProfileExists(normalized))) {
+    // Check duplicate strictly for this specific user
+    if (normalized !== "unknown" && (await profileService.checkProfileExists(normalized, userId))) {
       await docRef.delete();
       return res.status(200).json({
         success: true,
         deleted: true,
         duplicate: true,
-        message: "Creator already exists in the database; staging item removed."
+        message: "Creator already exists in your database; staging item removed."
       });
     }
 
-    // Create profile + delete staging doc atomically. A retry after a partial failure
-    // can no longer leave a duplicate profile behind.
     const outcome = await db.runTransaction(async (t) => {
       const fresh = await t.get(docRef);
       if (!fresh.exists) return "gone";
@@ -546,13 +591,13 @@ export const approveStagingItemController = async (req, res) => {
     });
 
     if (outcome === "approved" && normalized !== "unknown") {
-      bloomFilterService.add(normalized);
+      bloomFilterService.add(`${userId}_${normalized}`);
     }
 
     return res.status(200).json({
       success: true,
       message: outcome === "approved"
-        ? "Item approved and moved to main profile database."
+        ? "Item approved and moved to your main profile database."
         : "Item already approved or moved."
     });
   } catch (error) {
@@ -563,13 +608,17 @@ export const approveStagingItemController = async (req, res) => {
 
 export const bulkApproveStagingItemsController = async (req, res) => {
   try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Unauthorized user." });
+    }
+
     const ids = uniqueValidIds((req.body || {}).ids);
 
     if (ids.length === 0) {
       return res.status(400).json({ success: false, error: "Array of staging item IDs is required." });
     }
 
-    // The old code silently processed only the first 250 and still reported success
     if (ids.length > MAX_BULK_IDS) {
       return res.status(413).json({ success: false, error: `Too many items. Send at most ${MAX_BULK_IDS} IDs per request.` });
     }
@@ -585,25 +634,25 @@ export const bulkApproveStagingItemsController = async (req, res) => {
       const approvedNames = [];
 
       for (const snap of snaps) {
-        if (!snap.exists) {
+        if (!snap.exists || snap.data().userId !== userId) {
           missing++;
           continue;
         }
 
-        const profile = buildProfileFromStaging(snap.data());
+        const profile = buildProfileFromStaging(snap.data(), userId);
         const normalized = profile.normalizedUsername;
         let isDuplicate = false;
 
         if (normalized !== "unknown") {
           if (seenInRequest.has(normalized)) {
             isDuplicate = true;
-          } else if (bloomFilterService.has(normalized) && (await profileService.checkProfileExists(normalized))) {
+          } else if (bloomFilterService.has(`${userId}_${normalized}`) && (await profileService.checkProfileExists(normalized, userId))) {
             isDuplicate = true;
           }
         }
 
         if (isDuplicate) {
-          batch.delete(snap.ref);   // creator already exists; just clear the staging item
+          batch.delete(snap.ref);
           duplicates++;
           continue;
         }
@@ -618,9 +667,8 @@ export const bulkApproveStagingItemsController = async (req, res) => {
 
       await batch.commit();
 
-      // Only mark usernames as known after the write actually succeeded
       approvedNames.forEach((name) => {
-        if (name !== "unknown") bloomFilterService.add(name);
+        if (name !== "unknown") bloomFilterService.add(`${userId}_${name}`);
       });
     }
 
@@ -639,6 +687,11 @@ export const bulkApproveStagingItemsController = async (req, res) => {
 
 export const bulkDeleteStagingItemsController = async (req, res) => {
   try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Unauthorized user." });
+    }
+
     const ids = uniqueValidIds((req.body || {}).ids);
 
     if (ids.length === 0) {
@@ -650,14 +703,19 @@ export const bulkDeleteStagingItemsController = async (req, res) => {
     }
 
     for (const idChunk of chunk(ids, DELETE_CHUNK)) {
+      const snaps = await db.getAll(...idChunk.map((id) => stagingCollection.doc(id)));
       const batch = db.batch();
-      idChunk.forEach((id) => batch.delete(stagingCollection.doc(id)));
+      snaps.forEach((snap) => {
+        if (snap.exists && snap.data().userId === userId) {
+          batch.delete(snap.ref);
+        }
+      });
       await batch.commit();
     }
 
     return res.status(200).json({
       success: true,
-      message: `Successfully deleted ${ids.length} items.`
+      message: `Successfully deleted selected items.`
     });
   } catch (error) {
     console.error("Error bulk deleting staging items:", error?.stack || error);
@@ -667,13 +725,23 @@ export const bulkDeleteStagingItemsController = async (req, res) => {
 
 export const deleteStagingItemController = async (req, res) => {
   try {
+    const userId = req.user?.id;
     const { id } = req.params;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Unauthorized user." });
+    }
 
     if (!isValidDocId(id)) {
       return res.status(400).json({ success: false, error: "A valid staging item ID is required." });
     }
 
-    await stagingCollection.doc(id).delete();
+    const docRef = stagingCollection.doc(id);
+    const docSnap = await docRef.get();
+
+    if (docSnap.exists && docSnap.data().userId === userId) {
+      await docRef.delete();
+    }
 
     return res.status(200).json({ success: true, message: "Item removed from staging queue." });
   } catch (error) {
