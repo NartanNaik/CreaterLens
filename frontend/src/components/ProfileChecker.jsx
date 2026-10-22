@@ -4,7 +4,7 @@ import api from '../services/api';
 
 // --- Inline SVGs ---
 const SearchIcon = () => (
-  <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position: 'absolute', left: '12px', color: 'var(--text-faint)' }}>
     <circle cx="11" cy="11" r="8"></circle>
     <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
   </svg>
@@ -19,7 +19,7 @@ const WarningIcon = () => (
 );
 
 const PlusIcon = () => (
-  <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}>
     <line x1="12" y1="5" x2="12" y2="19"></line>
     <line x1="5" y1="12" x2="19" y2="12"></line>
   </svg>
@@ -32,40 +32,21 @@ const CheckCircleIcon = () => (
   </svg>
 );
 
-// Dropdown fields in the add form (same options the dashboard table uses)
-const SELECT_FIELDS = [
-  { key: 'skinTone', label: 'Skin Tone', options: ['Fair', 'Tan', 'Dark'] },
-  { key: 'bodyType', label: 'Body Type', options: ['Fit', 'Slim', 'Fat', 'Curvy'] },
-  { key: 'reelType', label: 'Reel Type', options: ['Hot', 'Erotic', 'Beautiful'] },
-  { key: 'specialPart', label: 'Special Part', options: ['Whole body', 'Breast', 'Face', 'Stomach', 'Below stomach', 'Back'] },
-  { key: 'ageRange', label: 'Age Range', options: ['18 to 28', '29 to 35', '36+'] },
-  { key: 'playable', label: 'Playable', options: ['Yes', 'No'] }
-];
-
 const INITIAL_FORM = {
-  nation: '',
-  skinTone: 'Fair',
-  bodyType: 'Fit',
-  reelType: 'Hot',
-  specialPart: 'Whole body',
-  ageRange: '18 to 28',
   playable: 'Yes',
-  totalFollowers: '',
-  customCategories: {}
+  customCategories: {} 
 };
 
 export default function ProfileChecker({ onProfileAdded, customColumns = [] }) {
   const [username, setUsername] = useState('');
-  const [status, setStatus] = useState(null);      // null | 'available' | 'exists' | 'error'
+  const [link, setLink] = useState(''); 
+  const [status, setStatus] = useState(null);      
   const [errorMsg, setErrorMsg] = useState('');
   const [loading, setLoading] = useState(false);
   const [adding, setAdding] = useState(false);
   const [formData, setFormData] = useState(INITIAL_FORM);
 
-  // Lets us ignore a slow check response if the user has already changed the text
   const checkReqRef = useRef(0);
-
-  const setField = (key, value) => setFormData(prev => ({ ...prev, [key]: value }));
 
   const setCustomField = (columnId, value) =>
     setFormData(prev => ({
@@ -74,8 +55,15 @@ export default function ProfileChecker({ onProfileAdded, customColumns = [] }) {
     }));
 
   const handleUsernameChange = (e) => {
-    checkReqRef.current += 1;   // invalidate any in-flight check
-    setUsername(e.target.value);
+    checkReqRef.current += 1;   
+    
+    const val = e.target.value;
+    setUsername(val);
+    
+    if (val.includes('instagram.com')) {
+      setLink(val);
+    }
+    
     setStatus(null);
     setErrorMsg('');
     setLoading(false);
@@ -94,7 +82,6 @@ export default function ProfileChecker({ onProfileAdded, customColumns = [] }) {
       const { data } = await api.post('/profiles/check', { username: trimmed });
       if (reqId !== checkReqRef.current) return;
 
-      // The server cleans pasted URLs/@handles down to the real username; show and use that
       if (data.username) setUsername(data.username);
       setStatus(data.exists ? 'exists' : 'available');
     } catch (error) {
@@ -112,18 +99,15 @@ export default function ProfileChecker({ onProfileAdded, customColumns = [] }) {
     setAdding(true);
 
     try {
-      // Only send custom values the user actually filled in
       const customCategories = Object.fromEntries(
         Object.entries(formData.customCategories).filter(([, v]) => v !== '' && v !== undefined)
       );
 
       const payload = {
-        ...formData,
         customCategories,
         username: username.trim(),
-        playable: formData.playable === 'Yes',
-        totalFollowers: Math.max(0, parseInt(formData.totalFollowers, 10) || 0),
-        avgViewsPerWeek: 0
+        sourceUrl: link.trim(), 
+        playable: formData.playable === 'Yes'
       };
 
       const { data } = await api.post('/profiles/add', payload);
@@ -132,6 +116,7 @@ export default function ProfileChecker({ onProfileAdded, customColumns = [] }) {
       toast.success(`@${payload.username} added!`);
 
       setUsername('');
+      setLink('');
       setStatus(null);
       setFormData(INITIAL_FORM);
     } catch (error) {
@@ -149,21 +134,18 @@ export default function ProfileChecker({ onProfileAdded, customColumns = [] }) {
   };
 
   return (
-    <div className="profile-checker-container glass-panel">
+    <div className="glass-panel flex-shrink-0" style={{ marginBottom: '16px', padding: '16px' }}>
 
-      {/* Input & Check Row: icon inside the input, button on the same line */}
-      <div className="checker-input-row">
-        <div className="checker-input-wrapper">
-          <span className="checker-input-icon">
-            <SearchIcon />
-          </span>
+      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+        <div className="search-bar-container" style={{ margin: 0, flex: 1, minWidth: '280px' }}>
+          <SearchIcon />
           <input
             type="text"
             placeholder="Enter username or Instagram link to check..."
             value={username}
             onChange={handleUsernameChange}
             onKeyDown={(e) => { if (e.key === 'Enter') handleCheck(); }}
-            className="checker-input-field"
+            className="search-input"
             autoComplete="off"
             spellCheck={false}
           />
@@ -171,84 +153,56 @@ export default function ProfileChecker({ onProfileAdded, customColumns = [] }) {
         <button
           onClick={handleCheck}
           disabled={loading || !username.trim()}
-          className="checker-check-btn"
+          className="action-btn btn-primary"
+          style={{ padding: '0 24px', flexShrink: 0 }}
         >
           {loading ? 'Checking...' : 'Check Username'}
         </button>
       </div>
 
-      {/* Exists */}
       {status === 'exists' && (
-        <div className="checker-warning-box" role="status">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '16px', padding: '12px 14px', borderRadius: '8px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', color: 'var(--status-no)', fontSize: '14px', fontWeight: 600 }}>
           <WarningIcon />
           <span>This user already exists in the database.</span>
         </div>
       )}
 
-      {/* Error (invalid handle, server problem, etc.) */}
       {status === 'error' && (
-        <div className="checker-warning-box error" role="alert">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '16px', padding: '12px 14px', borderRadius: '8px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', color: 'var(--status-no)', fontSize: '14px', fontWeight: 600 }}>
           <WarningIcon />
           <span>{errorMsg}</span>
         </div>
       )}
 
-      {/* Available: details form */}
       {status === 'available' && (
-        <div className="checker-available-box">
+        <div style={{ marginTop: '16px', padding: '20px', background: 'rgba(255, 255, 255, 0.02)', borderRadius: '8px', border: '1px solid var(--glass-border-light)' }}>
 
-          <div className="checker-available-header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--status-yes)', marginBottom: '16px' }}>
             <CheckCircleIcon />
-            <h3>@{username.trim()} is available. Add profile details</h3>
+            <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: 'var(--text-main)' }}>@{username.trim()} is available.</h3>
           </div>
 
-          <div className="checker-form-grid">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
 
-            <div className="checker-form-group">
-              <label className="checker-label">Nation</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Instagram Link</label>
               <input
                 type="text"
-                placeholder="e.g. India"
-                value={formData.nation}
-                onChange={e => setField('nation', e.target.value)}
-                className="checker-field-input"
+                placeholder="https://instagram.com/..."
+                value={link}
+                onChange={e => setLink(e.target.value)}
+                style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--glass-border-strong)', background: 'rgba(0, 0, 0, 0.2)', color: 'var(--text-main)', fontSize: '14px', outline: 'none' }}
               />
             </div>
 
-            {SELECT_FIELDS.map(field => (
-              <div className="checker-form-group" key={field.key}>
-                <label className="checker-label">{field.label}</label>
-                <select
-                  value={formData[field.key]}
-                  onChange={e => setField(field.key, e.target.value)}
-                  className="checker-field-select"
-                >
-                  {field.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                </select>
-              </div>
-            ))}
-
-            <div className="checker-form-group">
-              <label className="checker-label">Total Followers</label>
-              <input
-                type="number"
-                min="0"
-                placeholder="e.g. 50000"
-                value={formData.totalFollowers}
-                onChange={e => setField('totalFollowers', e.target.value)}
-                className="checker-field-input"
-              />
-            </div>
-
-            {/* Custom columns (the prop was received before but never used) */}
-            {customColumns.map(col => (
-              <div className="checker-form-group" key={col.columnId}>
-                <label className="checker-label">{col.displayName}</label>
+            {customColumns.filter(col => col.columnId !== 'username' && col.columnId !== 'link').map(col => (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }} key={col.columnId}>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{col.displayName}</label>
                 {col.inputType === 'dropdown' && Array.isArray(col.options) && col.options.length > 0 ? (
                   <select
                     value={formData.customCategories[col.columnId] || ''}
                     onChange={e => setCustomField(col.columnId, e.target.value)}
-                    className="checker-field-select"
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--glass-border-strong)', background: 'rgba(0, 0, 0, 0.2)', color: 'var(--text-main)', fontSize: '14px', outline: 'none' }}
                   >
                     <option value="">Not set</option>
                     {col.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
@@ -258,7 +212,7 @@ export default function ProfileChecker({ onProfileAdded, customColumns = [] }) {
                     type="text"
                     value={formData.customCategories[col.columnId] || ''}
                     onChange={e => setCustomField(col.columnId, e.target.value)}
-                    className="checker-field-input"
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--glass-border-strong)', background: 'rgba(0, 0, 0, 0.2)', color: 'var(--text-main)', fontSize: '14px', outline: 'none' }}
                   />
                 )}
               </div>
@@ -266,13 +220,15 @@ export default function ProfileChecker({ onProfileAdded, customColumns = [] }) {
 
           </div>
 
-          <button
-            onClick={handleAdd}
-            disabled={adding}
-            className="checker-add-btn"
-          >
-            <PlusIcon /> {adding ? 'Adding...' : 'Add to Database'}
-          </button>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
+            <button
+              onClick={handleAdd}
+              disabled={adding}
+              className="action-btn btn-success"
+            >
+              <PlusIcon /> {adding ? 'Adding...' : 'Add to Database'}
+            </button>
+          </div>
         </div>
       )}
     </div>

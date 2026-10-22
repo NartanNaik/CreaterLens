@@ -335,11 +335,9 @@ export const getStagingQueueController = async (req, res) => {
     const requested = parseInt(req.query.limit, 10);
     const limit = Math.min(Number.isFinite(requested) && requested > 0 ? requested : DEFAULT_QUEUE_LIMIT, MAX_QUEUE_LIMIT);
 
-    // Strictly multi-tenant: filter by logged-in userId
+    // Query strictly by userId without Firestore composite ordering
     const snapshot = await stagingCollection
       .where("userId", "==", userId)
-      .orderBy("createdAt", "desc")
-      .limit(limit)
       .get();
 
     const items = snapshot.docs.map((doc) => {
@@ -350,7 +348,12 @@ export const getStagingQueueController = async (req, res) => {
       return { ...data, id: doc.id };
     });
 
-    return res.status(200).json({ success: true, count: items.length, data: items });
+    // In-memory sort bypasses the Firestore Composite Index 500 error
+    items.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+    const pagedItems = items.slice(0, limit);
+
+    return res.status(200).json({ success: true, count: pagedItems.length, data: pagedItems });
   } catch (error) {
     console.error("Error fetching staging queue:", error?.stack || error);
     return res.status(500).json({ success: false, error: "Internal server error." });

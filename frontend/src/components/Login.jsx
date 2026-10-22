@@ -5,10 +5,15 @@ import axios from "axios";
 
 const API_URL = import.meta.env.VITE_API_URL || "";
 
-// --- Inline SVGs ---
-const ShieldIcon = () => (
-  <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+// --- Unique CreatorLens Cyber-Aperture Logo ---
+const CreatorLensIcon = () => (
+  <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    {/* Outer hexagon (tech framing) */}
+    <polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"></polygon>
+    {/* Inner diamond (the lens) */}
+    <polygon points="12 6 17 12 12 18 7 12 12 6"></polygon>
+    {/* Core spark (the focal point) */}
+    <circle cx="12" cy="12" r="2" fill="currentColor"></circle>
   </svg>
 );
 
@@ -79,33 +84,29 @@ function Login() {
   return (
     <div className="login-page-container">
 
-      {/* Background glow */}
-      <div className="login-glow-top" />
-      <div className="login-glow-bottom" />
-
       {/* Login Card */}
       <div className="login-card glass-panel">
 
         {/* Header: centered, symmetric */}
         <div className="login-header-section">
           <div className="login-icon-box">
-            <ShieldIcon />
+            <CreatorLensIcon />
           </div>
-          <h1 className="login-heading">Pink Data</h1>
+          <h1 className="login-heading">CreatorLens</h1>
           <p className="login-subheading">Sign in securely with your Google account</p>
         </div>
 
         <div className="login-form">
           {message && (
-            <div className="login-error-box" role="alert" style={{ marginBottom: "20px" }}>
+            <div className="login-error-box" role="alert">
               <AlertIcon />
               <span>{message}</span>
             </div>
           )}
 
-          <div style={{ display: "flex", justifyContent: "center", width: "100%", marginTop: "10px" }}>
+          <div className="login-google-wrap">
             {loading ? (
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "12px" }}>
+              <div className="login-loading">
                 <span className="login-spinner" aria-hidden="true" />
                 <span>Setting up your secure workspace...</span>
               </div>
@@ -117,7 +118,7 @@ function Login() {
                 size="large"
                 text="signin_with"
                 shape="rectangular"
-                width="100%"
+                width="320"
               />
             )}
           </div>

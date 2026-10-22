@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import AverageViewsModal from './AverageViewsModal';
@@ -10,13 +10,60 @@ import MassUploadModal from './MassUploadModal';
 import DragFillOverlay from './DragFillOverlay';
 import useDragFill from '../hooks/useDragFill';
 import api from '../services/api';
+import { withCoreColumns, isCoreColumn, readStorage } from '../utils/tableColumns';
 
 // --- Clean SVG Icons ---
+const SearchIcon = () => (
+  <svg className="svg-icon search-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="11" cy="11" r="8"></circle>
+    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+  </svg>
+);
+const RefreshIcon = () => (
+  <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="23 4 23 10 17 10"></polyline>
+    <polyline points="1 20 1 14 7 14"></polyline>
+    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+  </svg>
+);
+const CopyIcon = () => (
+  <svg className="svg-icon icon-mr-6" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+  </svg>
+);
+const TrashIcon = () => (
+  <svg className="svg-icon icon-mr-6" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="3 6 5 6 21 6"></polyline>
+    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+    <line x1="10" y1="11" x2="10" y2="17"></line>
+    <line x1="14" y1="11" x2="14" y2="17"></line>
+  </svg>
+);
+const SettingsIcon = () => (
+  <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="3"></circle>
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+  </svg>
+);
 const LayersIcon = () => (
-  <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}>
+  <svg className="svg-icon icon-mr-6" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
     <polyline points="2 17 12 22 22 17"></polyline>
     <polyline points="2 12 12 17 22 12"></polyline>
+  </svg>
+);
+const PlusIcon = () => (
+  <svg className="svg-icon icon-mr-6" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="12" y1="5" x2="12" y2="19"></line>
+    <line x1="5" y1="12" x2="19" y2="12"></line>
+  </svg>
+);
+const CloudUploadIcon = () => (
+  <svg className="svg-icon icon-mr-6" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"></path>
+    <polyline points="16 16 12 12 8 16"></polyline>
+    <line x1="12" y1="12" x2="12" y2="21"></line>
   </svg>
 );
 const ExternalLinkIcon = () => (
@@ -26,68 +73,39 @@ const ExternalLinkIcon = () => (
     <line x1="10" y1="14" x2="21" y2="3"></line>
   </svg>
 );
-const SearchIcon = () => (
-  <svg className="svg-icon search-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="11" cy="11" r="8"></circle>
-    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+const EditIcon = () => (
+  <svg className="svg-icon icon-mr-8" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
   </svg>
 );
-const PlusIcon = () => (
-  <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}>
-    <line x1="12" y1="5" x2="12" y2="19"></line>
-    <line x1="5" y1="12" x2="19" y2="12"></line>
-  </svg>
-);
-const UploadCloudIcon = () => (
-  <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}>
-    <polyline points="16 16 12 12 8 16"></polyline>
-    <line x1="12" y1="12" x2="12" y2="21"></line>
-    <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"></path>
-  </svg>
-);
-const CopyIcon = () => (
-  <svg className="svg-icon copy-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}>
-    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-  </svg>
-);
-const TrashIcon = () => (
-  <svg className="svg-icon delete-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}>
-    <polyline points="3 6 5 6 21 6"></polyline>
-    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
-    <line x1="10" y1="11" x2="10" y2="17"></line>
-    <line x1="14" y1="11" x2="14" y2="17"></line>
+const EyeOffIcon = () => (
+  <svg className="svg-icon icon-mr-8" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+    <circle cx="12" cy="12" r="3"></circle>
+    <line x1="1" y1="1" x2="23" y2="23"></line>
   </svg>
 );
 
 const BATCH_SIZE = 10;
 
-// --- GLOBAL CACHE (Prevents Firebase reads on tab switch) ---
 let globalProfilesCache = null;
 let globalColumnsCache = null;
 let globalLastFetchTime = 0;
-const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+const CACHE_DURATION_MS = 5 * 60 * 1000;
 
-// --- helpers ---
-const readStorage = (key, fallback) => {
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw === null) return fallback;
-    return JSON.parse(raw) ?? fallback;
-  } catch {
-    return fallback;
-  }
-};
-
+// Resolves to the response body; throws an Error carrying the server's message.
 const request = async (path, { method = 'GET', data } = {}) => {
   try {
     const res = await api.request({ url: path, method, data });
-    return { json: async () => res.data };
+    return res.data;
   } catch (error) {
-    const message = error.response?.data?.error || error.message || `Request failed`;
+    const message = error.response?.data?.error || error.message || 'Request failed';
     throw new Error(message);
   }
 };
+
+const toArray = (body) => (Array.isArray(body) ? body : (body?.data || []));
 
 const applyValue = (profile, key, value, isCustom) =>
   isCustom
@@ -110,8 +128,7 @@ const copyText = async (text) => {
   }
   const ta = document.createElement('textarea');
   ta.value = text;
-  ta.style.position = 'fixed';
-  ta.style.opacity = '0';
+  ta.className = 'clipboard-proxy';
   document.body.appendChild(ta);
   ta.select();
   const ok = document.execCommand('copy');
@@ -123,15 +140,15 @@ export default function ProfileDashboard() {
   const navigate = useNavigate();
   const { updateGlobalCount } = useOutletContext() || {};
 
-  // 1. Initialize state with global cache
   const [profiles, setProfiles] = useState(globalProfilesCache || []);
   const [customColumns, setCustomColumns] = useState(globalColumnsCache || []);
   const [fetching, setFetching] = useState(!globalProfilesCache);
+  const [loaded, setLoaded] = useState(Boolean(globalProfilesCache));
   const [deleting, setDeleting] = useState(false);
 
   const [isAvgCalcOpen, setIsAvgCalcOpen] = useState(false);
   const [isAddCategoryOpen, setIsAddCategoryOpen] = useState(false);
-  const [selectedProfileId, setSelectedProfileId] = useState(null);
+  const [selectedProfileId] = useState(null);
 
   const [isManageColOpen, setIsManageColOpen] = useState(false);
   const [selectedColumn, setSelectedColumn] = useState(null);
@@ -141,19 +158,26 @@ export default function ProfileDashboard() {
   const [sortConfig, setSortConfig] = useState({ key: 'createdAt', direction: 'desc' });
 
   const [contextMenu, setContextMenu] = useState(null);
+  const menuRef = useRef(null);
+
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
 
   const [hiddenCols, setHiddenCols] = useState(() => readStorage('hiddenCols', []));
   const [renamedCols, setRenamedCols] = useState(() => readStorage('renamedCols', {}));
 
-  // 2. Keep the global cache automatically synchronized with any edits/deletes
   useEffect(() => {
     if (profiles !== globalProfilesCache) {
       globalProfilesCache = profiles;
     }
-    if (updateGlobalCount) {
+  }, [profiles]);
+
+  // Only push the count once real data has loaded, so an empty initial state never overwrites the header count.
+  useEffect(() => {
+    if (updateGlobalCount && loaded) {
       updateGlobalCount(profiles.length);
     }
-  }, [profiles, updateGlobalCount]);
+  }, [profiles, loaded, updateGlobalCount]);
 
   useEffect(() => {
     if (customColumns !== globalColumnsCache) {
@@ -165,6 +189,24 @@ export default function ProfileDashboard() {
     const closeMenu = () => setContextMenu(null);
     window.addEventListener('click', closeMenu);
     return () => window.removeEventListener('click', closeMenu);
+  }, []);
+
+  // Position the context menu through CSS custom properties (no inline style prop).
+  useLayoutEffect(() => {
+    if (contextMenu && menuRef.current) {
+      menuRef.current.style.setProperty('--menu-x', `${contextMenu.x}px`);
+      menuRef.current.style.setProperty('--menu-y', `${contextMenu.y}px`);
+    }
+  }, [contextMenu]);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   useEffect(() => {
@@ -181,40 +223,51 @@ export default function ProfileDashboard() {
   }, [hiddenCols, renamedCols]);
 
   const fetchData = async () => {
-    // 3. Skip fetching if cache is valid (saving Firebase reads)
     const now = Date.now();
     if (globalProfilesCache && globalColumnsCache && (now - globalLastFetchTime < CACHE_DURATION_MS)) {
-      return; 
+      return;
     }
 
     setFetching(true);
-    try {
-      const [profilesRes, columnsRes] = await Promise.all([
-        request('/profiles'),
-        request('/settings/columns')
-      ]);
 
-      const profilesData = await profilesRes.json();
-      const columnsData = await columnsRes.json();
+    // allSettled: a failing /settings/columns must not blank the whole table.
+    const [profilesRes, columnsRes] = await Promise.allSettled([
+      request('/profiles'),
+      request('/settings/columns')
+    ]);
 
-      const fetchedProfiles = Array.isArray(profilesData) ? profilesData : (profilesData.data || []);
-      const fetchedColumns = Array.isArray(columnsData) ? columnsData : (columnsData.data || []);
+    let bothOk = true;
 
-      // 4. Update the cache with fresh data
+    if (profilesRes.status === 'fulfilled') {
+      const fetchedProfiles = toArray(profilesRes.value);
       globalProfilesCache = fetchedProfiles;
-      globalColumnsCache = fetchedColumns;
-      globalLastFetchTime = Date.now();
-
       setProfiles(fetchedProfiles);
-      setCustomColumns(fetchedColumns);
-    } catch (error) {
-      console.error("Error fetching data:", error);
-      toast.error(error.message || "Failed to load profiles.");
-      setProfiles([]);
-      setCustomColumns([]);
-    } finally {
-      setFetching(false);
+      setLoaded(true);
+    } else {
+      bothOk = false;
+      console.error("Error fetching profiles:", profilesRes.reason);
+      toast.error(profilesRes.reason?.message || "Failed to load profiles.");
     }
+
+    if (columnsRes.status === 'fulfilled') {
+      const fetchedColumns = toArray(columnsRes.value);
+      globalColumnsCache = fetchedColumns;
+      setCustomColumns(fetchedColumns);
+    } else {
+      bothOk = false;
+      console.error("Error fetching columns:", columnsRes.reason);
+      toast.error("Couldn't load custom columns. Showing defaults.");
+    }
+
+    globalLastFetchTime = bothOk ? Date.now() : 0;
+    setFetching(false);
+  };
+
+  const forceRefreshData = () => {
+    globalProfilesCache = null;
+    globalColumnsCache = null;
+    globalLastFetchTime = 0;
+    fetchData();
   };
 
   const handleProfileAdded = (newProfile) => {
@@ -228,7 +281,7 @@ export default function ProfileDashboard() {
     try {
       await request(`/profiles/${id}`, {
         method: 'PATCH',
-        data: ({ avgViewsPerWeek: newAverage })
+        data: { avgViewsPerWeek: newAverage }
       });
     } catch (error) {
       console.error("Failed to save avg views:", error);
@@ -239,11 +292,10 @@ export default function ProfileDashboard() {
 
   const handleSaveNewCategory = async (categoryData) => {
     try {
-      const response = await request('/settings/columns', {
+      const result = await request('/settings/columns', {
         method: 'POST',
-        data: (categoryData)
+        data: categoryData
       });
-      const result = await response.json();
       setCustomColumns(prev => [...prev, result.column]);
       toast.success("Category added!");
     } catch (error) {
@@ -256,7 +308,7 @@ export default function ProfileDashboard() {
     try {
       await request('/settings/columns', {
         method: 'DELETE',
-        data: (columnToDelete)
+        data: columnToDelete
       });
       setCustomColumns(prev => prev.filter(col => col.columnId !== columnToDelete.columnId));
       toast.success("Column deleted!");
@@ -278,7 +330,7 @@ export default function ProfileDashboard() {
     } catch (error) {
       console.error("Failed to delete:", error);
       toast.error("Failed to delete profile.");
-      if (removed) setProfiles(prev => [removed, ...prev]); // roll back
+      if (removed) setProfiles(prev => [removed, ...prev]);
     }
   };
 
@@ -350,7 +402,7 @@ export default function ProfileDashboard() {
     }
 
     if (failed.length > 0) {
-      setProfiles(prev => [...failed, ...prev]); 
+      setProfiles(prev => [...failed, ...prev]);
       toast.error(`${failed.length} profile(s) could not be deleted.`);
     } else {
       toast.success(`Deleted ${toDelete.length} profiles!`);
@@ -370,11 +422,11 @@ export default function ProfileDashboard() {
       : { [field]: newValue };
 
     try {
-      await request(`/profiles/${profileId}`, { method: 'PATCH', data: (payload) });
+      await request(`/profiles/${profileId}`, { method: 'PATCH', data: payload });
     } catch (error) {
       console.error(`Failed to update ${field}:`, error);
       toast.error(`Failed to save ${field}.`);
-      setProfiles(prev => prev.map(p => p.id === profileId ? original : p)); 
+      setProfiles(prev => prev.map(p => p.id === profileId ? original : p));
     }
   };
 
@@ -394,7 +446,7 @@ export default function ProfileDashboard() {
       const payload = isCustom
         ? { customCategories: next.customCategories }
         : { [columnKey]: newValue };
-      return request(`/profiles/${profile.id}`, { method: 'PATCH', data: (payload) });
+      return request(`/profiles/${profile.id}`, { method: 'PATCH', data: payload });
     }));
 
     const failedIds = new Set(
@@ -424,30 +476,35 @@ export default function ProfileDashboard() {
     onMouseUp: () => dragFill.handleMouseUp(index, key)
   });
 
-  const renderHeader = (label, sortKey, isCustom = false, sortable = true) => {
-    if (hiddenCols.includes(sortKey)) return null;
-    const displayLabel = renamedCols[sortKey] || label;
+  // Username + Link are force-prepended; core columns can never be hidden.
+  const visibleColumns = useMemo(
+    () => withCoreColumns(customColumns).filter(col => isCoreColumn(col.columnId) || !hiddenCols.includes(col.columnId)),
+    [customColumns, hiddenCols]
+  );
+
+  const hiddenCount = hiddenCols.filter(id => !isCoreColumn(id)).length;
+
+  const renderHeader = (col) => {
+    const key = col.columnId;
+    const displayLabel = renamedCols[key] || col.displayName;
 
     return (
       <th
-        key={sortKey}
-        onClick={sortable ? () => handleSort(sortKey) : undefined}
-        onContextMenu={(e) => handleContextMenu(e, sortKey, displayLabel, isCustom)}
-        className={sortable ? 'sortable-header' : undefined}
-        style={{ whiteSpace: 'nowrap', cursor: sortable ? 'pointer' : 'context-menu' }}
+        key={key}
+        onClick={() => handleSort(key)}
+        onContextMenu={(e) => handleContextMenu(e, key, displayLabel, col.isCustom)}
+        className="sortable-header"
       >
         {displayLabel}
-        {sortable && sortConfig.key === sortKey ? (sortConfig.direction === 'asc' ? ' ↑' : ' ↓') : ''}
+        {sortConfig.key === key ? (sortConfig.direction === 'asc' ? ' ↑' : ' ↓') : ''}
       </th>
     );
   };
 
   const renderCoreCell = (col, profile, index) => {
-    if (hiddenCols.includes(col.id)) return null;
-
     if (col.columnId === 'username') {
       return (
-        <td key={col.columnId} style={{ fontWeight: 600 }}>
+        <td key={col.columnId} className="td-strong">
           <EditableCell
             value={profile.username}
             onSave={(val) => handleCellEdit(profile.id, 'username', val)}
@@ -464,8 +521,7 @@ export default function ProfileDashboard() {
               href={profile.sourceUrl}
               target="_blank"
               rel="noreferrer"
-              className="action-btn btn-outline"
-              style={{ textDecoration: 'none', gap: 4, padding: '4px 8px' }}
+              className="action-btn link-btn"
             >
               <ExternalLinkIcon /> View
             </a>
@@ -474,7 +530,6 @@ export default function ProfileDashboard() {
       );
     }
 
-    // Treat everything else as standard editable cells (so Nation can also be modified)
     return (
       <td key={col.columnId} {...dragProps(index, col.columnId, profile[col.columnId])}>
         <EditableCell
@@ -485,36 +540,15 @@ export default function ProfileDashboard() {
     );
   };
 
-  // Add a manual refresh function to break the cache if needed
-  const forceRefreshData = () => {
-    globalProfilesCache = null;
-    globalColumnsCache = null;
-    globalLastFetchTime = 0;
-    fetchData();
-  };
-
-  // Calculate dynamic colspan based on actual columns present for a user
-  const totalColSpan = customColumns.filter(c => !hiddenCols.includes(c.columnId)).length + 1; // +1 for Actions
+  const totalColSpan = visibleColumns.length + 1;
 
   return (
     <div
-      className="dashboard-container relative w-full flex flex-col"
+      className="dashboard-container"
       onMouseUp={dragFill.handleGlobalMouseUp}
     >
-      <div
-        className="dashboard-toolbar glass-panel flex-shrink-0"
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          padding: '16px',
-          marginBottom: '16px',
-          gap: '16px',
-          flexWrap: 'wrap',
-          zIndex: 20
-        }}
-      >
-        <div className="search-bar-container" style={{ margin: 0, flex: 1, minWidth: '250px' }}>
+      <div className="dashboard-toolbar glass-panel">
+        <div className="search-bar-container toolbar-search toolbar-search-wide">
           <SearchIcon />
           <input
             type="text"
@@ -525,71 +559,82 @@ export default function ProfileDashboard() {
           />
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          
-          <button onClick={forceRefreshData} className="action-btn" style={{ padding: '8px 12px' }}>
-            Refresh Data
+        <div className="toolbar-actions">
+          <button onClick={forceRefreshData} className="action-btn">
+            <RefreshIcon /> Refresh Data
           </button>
-          
-          <button onClick={handleCopyAll} className="action-btn copy-btn" style={{ padding: '8px 12px' }}>
+
+          <button onClick={handleCopyAll} className="action-btn">
             <CopyIcon /> Copy All Usernames
           </button>
 
-          <button onClick={handleDeleteAll} disabled={deleting} className="action-btn delete-btn" style={{ padding: '8px 12px' }}>
+          <button onClick={handleDeleteAll} disabled={deleting} className="action-btn btn-danger">
             <TrashIcon /> {deleting ? "Deleting..." : "Delete All"}
           </button>
 
-          <div style={{ width: '1px', height: '24px', backgroundColor: 'var(--glass-border-strong)', margin: '0 4px' }}></div>
+          <div className="toolbar-divider"></div>
 
-          <button className="add-category-btn" onClick={() => navigate('/staging')} style={{ padding: '8px 12px' }}>
-            <LayersIcon /> Inbox / Staging
-          </button>
+          <div className="dropdown-container" ref={dropdownRef}>
+            <button className="action-btn" onClick={() => setIsDropdownOpen(!isDropdownOpen)}>
+              <SettingsIcon /> Actions
+            </button>
 
-          <button className="add-category-btn" onClick={() => setIsAddCategoryOpen(true)} style={{ padding: '8px 12px' }}>
-            <PlusIcon /> Add Column
-          </button>
-
-          <button className="add-category-btn mass-upload-btn" onClick={() => setIsMassUploadOpen(true)} style={{ padding: '8px 12px' }}>
-            <UploadCloudIcon /> Mass Upload
-          </button>
+            <div className={`dropdown-menu ${isDropdownOpen ? 'show' : ''}`}>
+              <button className="dropdown-item" onClick={() => { navigate('/staging'); setIsDropdownOpen(false); }}>
+                <LayersIcon /> Inbox / Staging
+              </button>
+              <button className="dropdown-item" onClick={() => { setIsAddCategoryOpen(true); setIsDropdownOpen(false); }}>
+                <PlusIcon /> Add Column
+              </button>
+              <button className="dropdown-item" onClick={() => { setIsMassUploadOpen(true); setIsDropdownOpen(false); }}>
+                <CloudUploadIcon /> Mass Upload
+              </button>
+              {hiddenCount > 0 && (
+                <button
+                  className="dropdown-item"
+                  onClick={() => {
+                    setHiddenCols(prev => prev.filter(isCoreColumn));
+                    setIsDropdownOpen(false);
+                  }}
+                >
+                  <EyeOffIcon /> Show Hidden Columns ({hiddenCount})
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
-      <ProfileChecker
-        onProfileAdded={handleProfileAdded}
-        customColumns={customColumns}
-      />
+      <div className="checker-wrapper">
+        <ProfileChecker
+          onProfileAdded={handleProfileAdded}
+          customColumns={customColumns}
+        />
+      </div>
 
-      <div className="table-wrapper glass-panel flex-1" style={{ marginTop: 0 }}>
-        <table className="profile-table w-full text-left">
+      <div className="table-wrapper glass-panel">
+        <table className="staging-table profile-table">
           <thead>
             <tr>
-              {/* Render dynamic columns directly from customColumns */}
-              {customColumns.map(col =>
-                renderHeader(col.displayName, col.columnId, col.isCustom)
-              )}
-
-              <th>Actions</th>
+              {visibleColumns.map(renderHeader)}
+              <th className="cell-right">Actions</th>
             </tr>
           </thead>
 
           <tbody>
             {filteredAndSortedProfiles.length === 0 ? (
               <tr>
-                <td colSpan={totalColSpan} style={{ textAlign: 'center', padding: '40px 16px', color: 'var(--text-faint)', fontStyle: 'italic' }}>
+                <td colSpan={totalColSpan} className="table-empty-state">
                   {fetching ? 'Loading...' : (searchQuery ? 'No profiles match your search.' : 'No profiles yet.')}
                 </td>
               </tr>
             ) : (
               filteredAndSortedProfiles.map((profile, index) => (
                 <tr key={profile.id}>
-                  
-                  {/* Iterate over ALL custom columns. For core/base columns (isCustom: false), render natively. For custom columns, read from customCategories object */}
-                  {customColumns.map(col => {
-                    if (hiddenCols.includes(col.columnId)) return null;
 
+                  {visibleColumns.map(col => {
                     if (!col.isCustom) {
-                       return renderCoreCell(col, profile, index);
+                      return renderCoreCell(col, profile, index);
                     }
 
                     const customValue = profile.customCategories?.[col.columnId] || '';
@@ -605,12 +650,12 @@ export default function ProfileDashboard() {
                     );
                   })}
 
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <button className="action-btn copy-btn" onClick={() => handleCopyRow(profile)}>
+                  <td className="cell-right">
+                    <div className="table-action-group">
+                      <button className="action-btn" onClick={() => handleCopyRow(profile)}>
                         <CopyIcon /> Copy
                       </button>
-                      <button className="action-btn delete-btn" onClick={() => handleDeleteRow(profile.id)}>
+                      <button className="action-btn btn-danger" onClick={() => handleDeleteRow(profile.id)}>
                         <TrashIcon /> Delete
                       </button>
                     </div>
@@ -625,8 +670,8 @@ export default function ProfileDashboard() {
       {contextMenu && (
         <div
           className="context-menu"
+          ref={menuRef}
           onClick={(e) => e.stopPropagation()}
-          style={{ position: 'fixed', top: contextMenu.y, left: contextMenu.x, zIndex: 2000 }}
         >
           <div className="context-menu-title">Column: {contextMenu.colName}</div>
 
@@ -639,7 +684,7 @@ export default function ProfileDashboard() {
                   setContextMenu(null);
                 }}
               >
-                ✎ Edit / Manage
+                <EditIcon /> Edit / Manage
               </button>
 
               <button
@@ -651,7 +696,7 @@ export default function ProfileDashboard() {
                   setContextMenu(null);
                 }}
               >
-                🗑 Delete Column
+                <TrashIcon /> Delete Column
               </button>
             </>
           ) : (
@@ -665,20 +710,22 @@ export default function ProfileDashboard() {
                   setContextMenu(null);
                 }}
               >
-                ✎ Edit Name
+                <EditIcon /> Edit Name
               </button>
 
-              <button
-                className="danger"
-                onClick={() => {
-                  if (window.confirm(`Hide ${contextMenu.colName}?`)) {
-                    setHiddenCols(prev => Array.from(new Set([...prev, contextMenu.colId])));
-                  }
-                  setContextMenu(null);
-                }}
-              >
-                🗑 Hide Column
-              </button>
+              {!isCoreColumn(contextMenu.colId) && (
+                <button
+                  className="danger"
+                  onClick={() => {
+                    if (window.confirm(`Hide ${contextMenu.colName}?`)) {
+                      setHiddenCols(prev => Array.from(new Set([...prev, contextMenu.colId])));
+                    }
+                    setContextMenu(null);
+                  }}
+                >
+                  <EyeOffIcon /> Hide Column
+                </button>
+              )}
             </>
           )}
         </div>

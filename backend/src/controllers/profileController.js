@@ -84,6 +84,9 @@ const serializeDoc = (doc) => {
 
 const noCache = (res) => res.set("Cache-Control", "no-store");
 
+// createdAt may be an ISO string (our writes) or an already-serialized Timestamp; both parse with Date.
+const byCreatedAtDesc = (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+
 export const checkProfile = async (req, res) => {
   try {
     const userId = req.user?.id;
@@ -146,16 +149,17 @@ export const getProfiles = async (req, res) => {
 
     const category = typeof req.query.category === "string" ? req.query.category : "";
 
+    // Equality-only filters need no composite index. Adding orderBy("createdAt") to a
+    // userId filter is what required one (and crashed with a 500), so sort in memory instead.
     let query = db.collection("profiles").where("userId", "==", userId);
 
     if (category) {
       query = query.where("category", "==", category);
     }
 
-    query = query.orderBy("createdAt", "desc");
-
     const snapshot = await query.get();
     const profiles = snapshot.docs.map(serializeDoc);
+    profiles.sort(byCreatedAtDesc);
 
     noCache(res);
     return res.status(200).json({
@@ -163,31 +167,39 @@ export const getProfiles = async (req, res) => {
       data: profiles
     });
   } catch (error) {
-    console.error("Error fetching profiles:", error);
+    console.error("Error fetching profiles:", error?.stack || error);
     return res.status(500).json({ success: false, error: "Internal server error." });
   }
 };
 
 // Aggregated count strictly scoped to the logged-in user
 export const getGlobalCount = async (req, res) => {
-  try {
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ success: false, error: "Unauthorized user." });
-    }
-
-    const snapshot = await db.collection("profiles").where("userId", "==", userId).count().get();
-    const count = snapshot.data().count;
-
-    noCache(res);
-    return res.status(200).json({
-      success: true,
-      count: count
-    });
-  } catch (error) {
-    console.error("Error fetching global profile count:", error);
-    return res.status(500).json({ success: false, error: "Internal server error." });
+  const userId = req.user?.id;
+  if (!userId) {
+    return res.status(401).json({ success: false, error: "Unauthorized user." });
   }
+
+  const profilesQuery = db.collection("profiles").where("userId", "==", userId);
+  let count;
+
+  try {
+    const aggregate = await profilesQuery.count().get();
+    count = aggregate.data().count;
+  } catch (aggregateError) {
+    // Fall back to counting documents if the aggregation query is unavailable
+    // (older SDK/emulator, permissions, transient backend error).
+    console.error("count() aggregation failed, falling back to get():", aggregateError?.message || aggregateError);
+    try {
+      const snapshot = await profilesQuery.select().get();
+      count = snapshot.size;
+    } catch (error) {
+      console.error("Error fetching global profile count:", error?.stack || error);
+      return res.status(500).json({ success: false, error: "Internal server error." });
+    }
+  }
+
+  noCache(res);
+  return res.status(200).json({ success: true, count });
 };
 
 export const updateProfile = async (req, res) => {
@@ -304,13 +316,13 @@ export const refreshVideos = async (req, res) => {
     }
 
     const { ids, force } = req.body;
-    
+
     if (!ids || !Array.isArray(ids)) {
       return res.status(400).json({ success: false, error: "An array of IDs is required." });
     }
 
-    const result = await profileService.refreshVideos(ids, force, userId); 
-    
+    const result = await profileService.refreshVideos(ids, force, userId);
+
     return res.status(200).json({ success: true, data: result });
   } catch (error) {
     console.error("Error refreshing videos:", error);
