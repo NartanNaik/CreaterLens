@@ -7,7 +7,7 @@ const API_URL = import.meta.env.VITE_API_URL || "";
 
 // --- Unique CreatorLens Cyber-Aperture Logo ---
 const CreatorLensIcon = () => (
-  <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg className="svg-icon login-logo" xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     {/* Outer hexagon (tech framing) */}
     <polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"></polygon>
     {/* Inner diamond (the lens) */}
@@ -25,7 +25,7 @@ const AlertIcon = () => (
   </svg>
 );
 
-function Login() {
+function Login({ theme = "dark" }) {
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(false);
@@ -114,7 +114,9 @@ function Login() {
               <GoogleLogin
                 onSuccess={handleGoogleSuccess}
                 onError={handleGoogleError}
-                theme="outline"
+                key={theme}
+                theme={theme === "light" ? "outline" : "filled_black"}
+                logo_alignment="left"
                 size="large"
                 text="signin_with"
                 shape="rectangular"

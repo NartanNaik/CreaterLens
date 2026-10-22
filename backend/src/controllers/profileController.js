@@ -84,6 +84,22 @@ const serializeDoc = (doc) => {
 
 const noCache = (res) => res.set("Cache-Control", "no-store");
 
+// Firestore out-of-quota is gRPC code 8 (RESOURCE_EXHAUSTED). Report it as 503 with a clear
+// message instead of a generic 500 so the frontend toast says what is actually wrong.
+const isQuotaError = (err) => err?.code === 8 || /RESOURCE_EXHAUSTED|quota/i.test(err?.message || "");
+
+const sendServerError = (res, error, label) => {
+  console.error(`${label}:`, error?.stack || error);
+  if (isQuotaError(error)) {
+    return res.status(503).json({
+      success: false,
+      code: "QUOTA_EXCEEDED",
+      error: "Database quota exceeded. It resets daily; upgrading the Firebase plan lifts it immediately."
+    });
+  }
+  return res.status(500).json({ success: false, error: "Internal server error." });
+};
+
 // createdAt may be an ISO string (our writes) or an already-serialized Timestamp; both parse with Date.
 const byCreatedAtDesc = (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
 
@@ -167,8 +183,7 @@ export const getProfiles = async (req, res) => {
       data: profiles
     });
   } catch (error) {
-    console.error("Error fetching profiles:", error?.stack || error);
-    return res.status(500).json({ success: false, error: "Internal server error." });
+    return sendServerError(res, error, "Error fetching profiles");
   }
 };
 
@@ -179,27 +194,16 @@ export const getGlobalCount = async (req, res) => {
     return res.status(401).json({ success: false, error: "Unauthorized user." });
   }
 
-  const profilesQuery = db.collection("profiles").where("userId", "==", userId);
-  let count;
-
   try {
-    const aggregate = await profilesQuery.count().get();
-    count = aggregate.data().count;
-  } catch (aggregateError) {
-    // Fall back to counting documents if the aggregation query is unavailable
-    // (older SDK/emulator, permissions, transient backend error).
-    console.error("count() aggregation failed, falling back to get():", aggregateError?.message || aggregateError);
-    try {
-      const snapshot = await profilesQuery.select().get();
-      count = snapshot.size;
-    } catch (error) {
-      console.error("Error fetching global profile count:", error?.stack || error);
-      return res.status(500).json({ success: false, error: "Internal server error." });
-    }
-  }
+    // Aggregation query: billed ~1 read per 1,000 matching docs. No get() fallback on purpose,
+    // since that would bill one read per document and make a quota problem worse.
+    const aggregate = await db.collection("profiles").where("userId", "==", userId).count().get();
 
-  noCache(res);
-  return res.status(200).json({ success: true, count });
+    noCache(res);
+    return res.status(200).json({ success: true, count: aggregate.data().count });
+  } catch (error) {
+    return sendServerError(res, error, "Error fetching global profile count");
+  }
 };
 
 export const updateProfile = async (req, res) => {

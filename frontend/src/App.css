@@ -205,6 +205,7 @@ select option { background: var(--menu-bg); color: var(--text-main); }
 /* Panel (flat, VS Code style) */
 .glass-panel {
   background: var(--glass-bg);
+  background: color-mix(in srgb, var(--glass-bg) 88%, transparent);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
@@ -224,7 +225,9 @@ select option { background: var(--menu-bg); color: var(--text-main); }
   display: flex;
   flex-direction: column;
   opacity: 1;
-  transition: opacity 0.3s ease;
+  transition: opacity 0.4s ease;
+  position: relative;
+  z-index: 1;
 }
 .app-root.is-hidden { opacity: 0; }
 
@@ -376,6 +379,8 @@ select option { background: var(--menu-bg); color: var(--text-main); }
   border-radius: var(--radius-lg);
   margin-top: 0;
 }
+/* More see-through so the background logo shows in empty tables */
+.table-wrapper.glass-panel { background: color-mix(in srgb, var(--glass-bg) 60%, transparent); }
 
 .staging-table, .profile-table { width: 100%; border-collapse: separate; border-spacing: 0; text-align: left; }
 .staging-table th, .profile-table th {
@@ -449,10 +454,10 @@ select option { background: var(--menu-bg); color: var(--text-main); }
 /* --- Splash Screen (App.jsx removes it at 600ms) --- */
 .splash-screen {
   position: fixed; inset: 0; background-color: var(--bg-color-deep); display: flex; justify-content: center; align-items: center; z-index: 9999;
-  animation: splashFadeOut 0.25s ease 0.35s forwards;
+  animation: splashFadeOut 0.4s ease 1.4s forwards;
 }
-.splash-content { display: flex; align-items: center; gap: 14px; animation: scaleUpFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-.splash-logo { color: var(--accent); animation: spinPulse 1.2s infinite cubic-bezier(0.4, 0, 0.2, 1); }
+.splash-content { display: flex; align-items: center; gap: 14px; animation: scaleUpFadeIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.splash-logo { color: var(--accent); animation: spinPulse 2s infinite cubic-bezier(0.4, 0, 0.2, 1); }
 .splash-text { font-family: var(--font-display); font-size: 34px; font-weight: 800; color: var(--text-main); letter-spacing: -0.5px; }
 .splash-dot { color: var(--accent); }
 
@@ -529,6 +534,7 @@ select option { background: var(--menu-bg); color: var(--text-main); }
 .dropdown-item:hover { background: var(--primary-color); color: #ffffff; }
 .dropdown-item svg { color: var(--primary-soft); }
 .dropdown-item:hover svg { color: #ffffff; }
+a.dropdown-item { text-decoration: none; }
 
 /* Modal Overlay */
 .modal-overlay { position: fixed; inset: 0; padding: 16px; background: var(--overlay-bg) !important; display: flex; align-items: center; justify-content: center; z-index: 1000; animation: fadeIn 0.2s var(--ease); }
@@ -537,7 +543,7 @@ select option { background: var(--menu-bg); color: var(--text-main); }
 @keyframes modalRise { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
 
 /* Login Page */
-.login-page-container { flex: 1; min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 16px; background: var(--bg-color-deep); }
+.login-page-container { flex: 1; min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 16px; }
 .login-card { width: 100%; max-width: 400px; padding: 40px; display: flex; flex-direction: column; }
 .login-header-section { text-align: center; margin-bottom: 32px; }
 .login-heading { font-family: var(--font-display); font-size: 28px; font-weight: 700; color: var(--text-main); margin: 0 0 8px; }
@@ -590,9 +596,59 @@ select option { background: var(--menu-bg); color: var(--text-main); }
 /* Login extras */
 .login-icon-box { display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px; margin-bottom: 16px; border-radius: var(--radius-lg); background: var(--primary-tint); border: 1px solid var(--primary-border); color: var(--accent); }
 .login-error-box { display: flex; align-items: center; gap: 8px; padding: 10px 14px; margin-bottom: 20px; border-radius: var(--radius-sm); background: var(--danger-bg); border: 1px solid var(--danger-border); color: var(--danger-text); font-size: 13px; font-weight: 600; }
-.login-google-wrap { display: flex; justify-content: center; width: 100%; margin-top: 10px; }
+/* color-scheme: light stops the browser painting an opaque white box behind Google's iframe on dark pages */
+.login-google-wrap { display: flex; justify-content: center; width: 100%; margin-top: 10px; color-scheme: light; }
+.login-logo { animation: spinContinuous 8s linear infinite; }
 .login-loading { display: flex; align-items: center; gap: 10px; padding: 12px; color: var(--text-muted); }
 .login-spinner { width: 18px; height: 18px; border: 2px solid var(--glass-border-strong); border-top-color: var(--accent); border-radius: 50%; animation: spinContinuous 0.8s linear infinite; }
+
+/* Actions dropdown: danger + disabled items */
+.dropdown-item:disabled { opacity: 0.5; cursor: not-allowed; }
+.dropdown-item.danger, .dropdown-item.danger svg { color: var(--danger-text); }
+.dropdown-item.danger:hover:not(:disabled) { background: var(--danger-bg-hover); color: var(--danger-text); }
+.dropdown-item.danger:hover:not(:disabled) svg { color: var(--danger-text); }
+
+/* Background watermark: big animated logo behind the app, like VS Code's empty-editor logo */
+.bg-watermark {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  color: var(--accent);
+  opacity: 0.09;
+}
+:root[data-theme="light"] .bg-watermark { opacity: 0.12; }
+.bg-watermark-logo {
+  width: min(70vmin, 640px);
+  height: min(70vmin, 640px);
+  will-change: transform;
+  animation: spinContinuous 12s linear infinite;
+}
+
+/* Modals: baseline for the markup inside .modal-content (element selectors + common class names) */
+.modal-content { position: relative; width: min(560px, 100%); display: flex; flex-direction: column; gap: 16px; color: var(--text-main); }
+.modal-content h1, .modal-content h2, .modal-content h3 { margin: 0; padding-right: 44px; display: flex; align-items: center; gap: 10px; font-family: var(--font-display); font-size: 20px; font-weight: 700; color: var(--text-main); }
+.modal-content p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text-muted); }
+.modal-content label { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }
+.modal-content textarea { min-height: 200px; resize: vertical; font-family: var(--font-mono); font-size: 13px; }
+.modal-content button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 16px; background: var(--btn-bg); border: 1px solid var(--glass-border-strong); border-radius: var(--radius-sm); color: var(--text-main); font-size: 13px; font-weight: 600; cursor: pointer; transition: background 0.15s var(--ease); }
+.modal-content button:hover:not(:disabled) { background: var(--btn-bg-hover); }
+.modal-content button:disabled { opacity: 0.5; cursor: not-allowed; }
+.modal-content .modal-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.modal-content .modal-header :is(h1, h2, h3) { padding-right: 0; }
+.modal-content .modal-close-btn, .modal-content .modal-close, .modal-content .close-btn { position: absolute; top: 14px; right: 14px; width: 32px; height: 32px; padding: 0; background: transparent; border-color: transparent; }
+.modal-content .modal-close-btn:hover:not(:disabled), .modal-content .modal-close:hover:not(:disabled), .modal-content .close-btn:hover:not(:disabled) { background: var(--hover-bg); }
+.modal-content .modal-actions, .modal-content .modal-footer, .modal-content .modal-buttons { display: flex; justify-content: flex-end; gap: 10px; }
+.modal-content .modal-process-btn { background: var(--primary-color); border-color: var(--primary-color); color: #ffffff; }
+.modal-content .modal-process-btn:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); }
+
+/* Respect "reduce motion" (must stay after every animation rule above) */
+@media (prefers-reduced-motion: reduce) {
+  .bg-watermark-logo, .brand-logo, .login-logo, .splash-logo, .login-spinner { animation: none; }
+}
 
 @media (max-width: 768px) {
   .dashboard-container { padding: 16px; }

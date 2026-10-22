@@ -589,6 +589,12 @@ export default function ProfileDashboard() {
               <button className="dropdown-item" onClick={() => { setIsMassUploadOpen(true); setIsDropdownOpen(false); }}>
                 <CloudUploadIcon /> Mass Upload
               </button>
+              <button className="dropdown-item" onClick={() => { handleCopyAll(); setIsDropdownOpen(false); }}>
+                <CopyIcon /> Copy All Usernames
+              </button>
+              <button className="dropdown-item danger" disabled={deleting} onClick={() => { setIsDropdownOpen(false); handleDeleteAll(); }}>
+                <TrashIcon /> {deleting ? "Deleting..." : "Delete All"}
+              </button>
               {hiddenCount > 0 && (
                 <button
                   className="dropdown-item"

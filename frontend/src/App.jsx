@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate, Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
-import { useState, useEffect, useLayoutEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from "react";
 import api from "./services/api";
 import Login from "./components/Login";
 import ProfileDashboard from "./components/ProfileDashboard";
@@ -8,7 +8,8 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import { Toaster } from "react-hot-toast";
 import "./App.css";
 
-const SPLASH_MS = 600;
+const SPLASH_MS = 1800;      // total time the splash stays on screen
+const SPLASH_FADE_MS = 400;  // crossfade at the end; keep in sync with .splash-screen in App.css (delay = SPLASH_MS - SPLASH_FADE_MS)
 const THEME_KEY = "creatorlens-theme";
 
 // --- Theme (VS Code Dark+ / Light+) ---
@@ -74,12 +75,106 @@ function ThemeToggle({ theme, onToggle }) {
   );
 }
 
-// --- Full-Screen Loading Splash (max 600ms) ---
-function AppSplash({ onComplete }) {
+// --- Contact menu (GitHub + LinkedIn) ---
+const ContactIcon = () => (
+  <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+  </svg>
+);
+
+const GitHubIcon = () => (
+  <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
+  </svg>
+);
+
+const LinkedInIcon = () => (
+  <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"></path>
+    <rect x="2" y="9" width="4" height="12"></rect>
+    <circle cx="4" cy="4" r="2"></circle>
+  </svg>
+);
+
+const CONTACT_LINKS = [
+  { label: "GitHub", href: "https://github.com/NartanNaik", Icon: GitHubIcon },
+  { label: "LinkedIn", href: "https://www.linkedin.com/in/nartan-naik-90499a359/", Icon: LinkedInIcon }
+];
+
+function ContactMenu() {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef(null);
+
   useEffect(() => {
-    const timer = setTimeout(onComplete, SPLASH_MS);
-    return () => clearTimeout(timer);
-  }, [onComplete]);
+    if (!open) return undefined;
+
+    const handlePointerDown = (event) => {
+      if (containerRef.current && !containerRef.current.contains(event.target)) setOpen(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div className="dropdown-container" ref={containerRef}>
+      <button
+        type="button"
+        className="action-btn"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        <ContactIcon /> Contact
+      </button>
+
+      <div className={`dropdown-menu${open ? " show" : ""}`} role="menu">
+        {CONTACT_LINKS.map(({ label, href, Icon }) => (
+          <a
+            key={label}
+            className="dropdown-item"
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            role="menuitem"
+            onClick={() => setOpen(false)}
+          >
+            <Icon /> {label}
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// --- Big animated logo behind the whole app (like VS Code's empty-editor watermark) ---
+const BackgroundLogo = () => (
+  <div className="bg-watermark" aria-hidden="true">
+    <svg className="bg-watermark-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"></polygon>
+      <polygon points="12 6 17 12 12 18 7 12 12 6"></polygon>
+      <circle cx="12" cy="12" r="2" fill="currentColor"></circle>
+    </svg>
+  </div>
+);
+
+// --- Full-Screen Loading Splash ---
+function AppSplash({ onReveal, onComplete }) {
+  useEffect(() => {
+    const revealTimer = setTimeout(onReveal, SPLASH_MS - SPLASH_FADE_MS);
+    const doneTimer = setTimeout(onComplete, SPLASH_MS);
+    return () => {
+      clearTimeout(revealTimer);
+      clearTimeout(doneTimer);
+    };
+  }, [onReveal, onComplete]);
 
   return (
     <div className="splash-screen">
@@ -152,6 +247,7 @@ function GlobalLayout({ theme, onToggleTheme }) {
             </svg>
             <span>Total IDs: {globalCount.toLocaleString()}</span>
           </div>
+          <ContactMenu />
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
           <button onClick={handleLogout} className="action-btn">
             Log out
@@ -167,17 +263,20 @@ function GlobalLayout({ theme, onToggleTheme }) {
 
 function App() {
   const [showSplash, setShowSplash] = useState(true);
+  const [revealed, setRevealed] = useState(false);
   const { theme, toggleTheme } = useTheme();
   const handleSplashDone = useCallback(() => setShowSplash(false), []);
+  const handleReveal = useCallback(() => setRevealed(true), []);
 
   return (
     <>
-      {showSplash && <AppSplash onComplete={handleSplashDone} />}
-      <div className={`app-root${showSplash ? ' is-hidden' : ''}`}>
+      {showSplash && <AppSplash onReveal={handleReveal} onComplete={handleSplashDone} />}
+      <BackgroundLogo />
+      <div className={`app-root${revealed ? '' : ' is-hidden'}`}>
         <BrowserRouter>
           <Toaster position="top-center" toastOptions={{ duration: 3000, className: 'app-toast' }} />
           <Routes>
-            <Route path="/login" element={<Login />} />
+            <Route path="/login" element={<Login theme={theme} />} />
             <Route
               element={
                 <ProtectedRoute>
