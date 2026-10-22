@@ -88,7 +88,7 @@ const getBestDynamicModel = async (apiKey) => {
 };
 
 // Universal OpenAI-compatible Caller for Groq, OpenRouter, and Pollinations
-const callOpenAICompatible = async (provider, textPrompt, imagePartBase64) => {
+const callOpenAICompatible = async (provider, textPrompt, systemInstruction, imagePartBase64) => {
   let url = "";
   let model = "";
   let headers = {
@@ -115,7 +115,7 @@ const callOpenAICompatible = async (provider, textPrompt, imagePartBase64) => {
     supportsVision = false;
   }
 
-  const combinedText = `${SYSTEM_PROMPT}\n\n${textPrompt}`;
+  const combinedText = `${systemInstruction}\n\n${textPrompt}`;
   let messages = [];
 
   // THE FIX: Dynamically build the payload structure based on Vision capability
@@ -158,7 +158,28 @@ const callOpenAICompatible = async (provider, textPrompt, imagePartBase64) => {
   return JSON.parse(responseText);
 };
 
-const SYSTEM_PROMPT = `
+export const analyzeReelMedia = async ({ videoUrl, thumbnailUrl, caption, username }, { userApiKey, customColumns }) => {
+  // If a user key was passed from authController, put it at the absolute top of the fleet
+  const fleetKeys = getApiKeys() || [];
+  const apiKeys = userApiKey ? [{ type: 'openrouter', key: userApiKey }, ...fleetKeys] : fleetKeys;
+
+  if (apiKeys.length === 0) {
+    throw new Error("No API keys found. Please add a key to your environment.");
+  }
+
+  // 1. Build the dynamic schema expectations from the user's custom columns
+  const customSchemaPrompts = customColumns.map(col => {
+    if (col.inputType === 'dropdown' && Array.isArray(col.options)) {
+      return `"${col.columnId}": "String (choose one of: ${col.options.join(", ")}, or '-' if unknown)"`;
+    }
+    return `"${col.columnId}": "String (extract or infer ${col.displayName}, or '-' if unknown)"`;
+  });
+
+  const customSchemaJson = customSchemaPrompts.length > 0 
+    ? customSchemaPrompts.join(",\n    ") 
+    : `"exampleAttribute": "String"`;
+
+  const DYNAMIC_SYSTEM_PROMPT = `
 You are a highly perceptive, expert AI profiling analyst. Your task is to dynamically evaluate a creator's vibe, aesthetics, demographics, and overall engagement based on visual evidence from their Reel thumbnail and provided metadata.
 
 CRITICAL FILTERING TASK (accountType):
@@ -167,38 +188,22 @@ You must determine if this specific username/profile belongs to a Female, a Male
 Do not force the data into unnatural assumptions. If the visual or textual evidence leans a certain way, trust your dynamic analysis. 
 
 ENGAGEMENT & STATS INSTRUCTIONS:
-- Look for the "[SYSTEM - Deep Scrape Data]" block in the prompt (if provided). 
-- Use this block to extract the exact true username (without spaces) and the exact integers for Followers, Views, Likes, and Comments. 
-- If the deep scrape data is missing, estimate based on caption context, or return 0. Convert strings like "1.5M" to raw integers (1500000).
+- Extract the exact true username (without spaces).
 
 You MUST return a valid JSON object matching this exact schema:
 {
   "username": "exact_handle_without_spaces",
-  "accountType": { "value": "String (Female, Male, or Brand)", "confidence": 0.0 to 1.0 },
-  "totalFollowers": 0,
-  "avgViewsPerWeek": 0,
-  "avgLikes": 0,
-  "avgComments": 0,
-  "nation": { "value": "String (e.g., USA, India, UK)", "confidence": 0.0 to 1.0 },
-  "skinTone": { "value": "String (e.g., Fair, Tan, Dark)", "confidence": 0.0 to 1.0 },
-  "bodyType": { "value": "String (e.g., Fit, Slim, Fat, Curvy)", "confidence": 0.0 to 1.0 },
-  "reelType": { "value": "String (e.g., Hot, Erotic, Beautiful, Dance, Fitness)", "confidence": 0.0 to 1.0 },
-  "specialPart": { "value": "String (e.g., Breast, Face, Whole body, null if none)", "confidence": 0.0 to 1.0 },
-  "ageRange": { "value": "String (e.g., 18 to 28, 29 to 35, 36+)", "confidence": 0.0 to 1.0 },
-  "aiSuggestions": ["String array of 1-3 highly dynamic, perceptive insights about the creator's style, aesthetic, or audience appeal"]
+  "accountType": "String (Female, Male, or Brand)",
+  "customCategories": {
+    ${customSchemaJson}
+  },
+  "aiInsights": "One short sentence analyzing their visual aesthetic."
 }
 
 Rules:
-1. If you are uncertain about a demographic attribute (confidence < 0.60), set its value to null rather than guessing blindly.
-2. Return ONLY the raw JSON object. Do not include markdown formatting like \`\`\`json.
+1. Return ONLY the raw JSON object. Do not include markdown formatting like \`\`\`json.
+2. If you cannot determine a custom category value, output "-".
 `;
-
-export const analyzeReelMedia = async ({ videoUrl, thumbnailUrl, caption, username }) => {
-  const apiKeys = getApiKeys();
-
-  if (!apiKeys) {
-    throw new Error("No API keys found. Please add GEMINI, GROQ, OPENROUTER, or POLLINATIONS keys to your .env file.");
-  }
 
   const imagePart = await fetchImageAsBase64(thumbnailUrl);
   
@@ -207,7 +212,7 @@ export const analyzeReelMedia = async ({ videoUrl, thumbnailUrl, caption, userna
     Caption & Extracted Metadata: 
     ${caption || "No caption provided."}
     
-    Dynamically analyze the visual and textual data to classify the account type (Female, Male, Brand), determine the clean handle, engagement metrics, and profile attributes.
+    Dynamically analyze the visual and textual data to classify the account type (Female, Male, Brand), determine the clean handle, and extract the requested custom attributes.
   `;
 
   // Key-Rotation Cascade across ALL providers
@@ -226,7 +231,7 @@ export const analyzeReelMedia = async ({ videoUrl, thumbnailUrl, caption, userna
           model: targetModel,
           contents: requestContents,
           config: {
-            systemInstruction: SYSTEM_PROMPT,
+            systemInstruction: DYNAMIC_SYSTEM_PROMPT,
             responseMimeType: "application/json",
             temperature: 0.4 
           }
@@ -238,7 +243,7 @@ export const analyzeReelMedia = async ({ videoUrl, thumbnailUrl, caption, userna
 
       } else {
         console.log(`🧠 [AI Engine] Trying ${provider.type.toUpperCase()} Model...`);
-        return await callOpenAICompatible(provider, contentPrompt, imagePart ? imagePart.openAiFormat : null);
+        return await callOpenAICompatible(provider, contentPrompt, DYNAMIC_SYSTEM_PROMPT, imagePart ? imagePart.openAiFormat : null);
       }
 
     } catch (error) {

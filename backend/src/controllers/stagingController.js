@@ -8,6 +8,7 @@ import { decryptKey } from "../services/encryptionService.js";
 const stagingCollection = db.collection("staging");
 const profilesCollection = db.collection("profiles");
 const usersCollection = db.collection("users");
+const usersSettingsCollection = db.collection("users_settings");
 
 // ---------- constants ----------
 const HANDLE_REGEX = /^[A-Za-z0-9._]{1,30}$/;
@@ -43,11 +44,6 @@ const chunk = (arr, size) => {
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
 };
-
-const toCount = (value) => Math.max(0, parseInt(value, 10) || 0);
-
-// AI returns "-" for unknown attributes; store real empties on the approved profile
-const cleanAttr = (value) => (typeof value === "string" && value.trim() && value.trim() !== "-" ? value.trim() : "");
 
 const safeMediaUrl = (url) => {
   if (typeof url !== "string" || !url.trim()) return "";
@@ -97,7 +93,7 @@ const markFailed = async (id, userId) => {
   }
 };
 
-// Builds the approved-profile document from a staging document scoped to the user
+// Builds the approved-profile document from a staging document scoped to the user (Fully Dynamic)
 const buildProfileFromStaging = (item, userId) => {
   const username = (typeof item.username === "string" && item.username.trim()) || "Unknown";
 
@@ -105,22 +101,12 @@ const buildProfileFromStaging = (item, userId) => {
     userId,
     username,
     normalizedUsername: username.toLowerCase(),
-    contact: item.contact || "",
-    nation: cleanAttr(item.nation),
-    skinTone: cleanAttr(item.skinTone),
-    bodyType: cleanAttr(item.bodyType),
-    reelType: cleanAttr(item.reelType),
-    specialPart: cleanAttr(item.specialPart),
-    ageRange: cleanAttr(item.ageRange),
-    totalFollowers: toCount(item.totalFollowers),
-    avgViewsPerWeek: toCount(item.avgViewsPerWeek),
-    avgLikes: toCount(item.avgLikes),
-    avgComments: toCount(item.avgComments),
     playable: false,
     sourceUrl: item.url || "",
     videoPreviewUrl: item.videoPreviewUrl || item.tempScrapeData?.videoUrl || "",
     thumbnailUrl: item.thumbnailUrl || item.tempScrapeData?.thumbnailUrl || "",
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    customCategories: item.customCategories || {} // All AI-generated columns map here
   };
 };
 
@@ -157,7 +143,6 @@ const stageReel = async ({ reelUrl, handle, thumbnailUrl = "", caption = "", use
     url: reelUrl,
     username: handle,
     normalizedUsername: normalizedHandle,
-    contact: "",
     thumbnailUrl: safeMediaUrl(thumbnailUrl),
     caption: typeof caption === "string" ? caption.slice(0, MAX_CAPTION_LENGTH) : "",
     status: "pending",
@@ -455,15 +440,22 @@ export const processStagingItemController = async (req, res) => {
     const thumbnailUrl = safeMediaUrl(targetData.thumbnailUrl);
     const videoUrl = safeMediaUrl(targetData.videoUrl);
 
-    // Retrieve and decrypt the user's personal $0 sub-key
+    // Retrieve user's personal OpenRouter key AND their dynamic columns
     let userApiKey = null;
+    let customColumns = [];
+    
     try {
       const userDoc = await usersCollection.doc(userId).get();
       if (userDoc.exists && userDoc.data().encryptedOrKey) {
         userApiKey = decryptKey(userDoc.data().encryptedOrKey);
       }
-    } catch (keyErr) {
-      console.error("Failed to decrypt user OpenRouter key:", keyErr?.message || keyErr);
+
+      const settingsDoc = await usersSettingsCollection.doc(userId).get();
+      if (settingsDoc.exists && settingsDoc.data().columns) {
+        customColumns = settingsDoc.data().columns.filter(c => c.isCustom);
+      }
+    } catch (err) {
+      console.error("Failed to fetch user settings for AI prompt:", err?.message || err);
     }
 
     let aiResult = null;
@@ -476,7 +468,7 @@ export const processStagingItemController = async (req, res) => {
           caption: targetData.caption,
           username: targetData.username
         },
-        { userApiKey } // Forwarded to AI service to route through user's key
+        { userApiKey, customColumns } // Pass custom columns so the AI knows what to look for!
       );
 
       if (!aiResult || typeof aiResult !== "object") {
@@ -493,7 +485,8 @@ export const processStagingItemController = async (req, res) => {
       return res.status(502).json({ success: false, error: "AI analysis failed.", status: "failed" });
     }
 
-    const accountType = String(aiResult.accountType?.value || "").toLowerCase().trim();
+    // Determine if we need to auto-reject based on AI's understanding
+    const accountType = String(aiResult.customCategories?.accountType || aiResult.accountType || "").toLowerCase().trim();
 
     if (REJECT_ACCOUNT_REGEX.test(accountType)) {
       console.log(`[Auto-Filter] Automatically rejected ${targetData.username} (Classified as: ${accountType})`);
@@ -510,19 +503,10 @@ export const processStagingItemController = async (req, res) => {
     const updates = {
       username: resolvedUsername,
       normalizedUsername: resolvedUsername.toLowerCase(),
-      nation: aiResult.nation?.value || "-",
-      skinTone: aiResult.skinTone?.value || "-",
-      bodyType: aiResult.bodyType?.value || "-",
-      reelType: aiResult.reelType?.value || "-",
-      specialPart: aiResult.specialPart?.value || "-",
-      ageRange: aiResult.ageRange?.value || "-",
-      totalFollowers: toCount(aiResult.totalFollowers),
-      avgViewsPerWeek: toCount(aiResult.avgViewsPerWeek),
-      avgLikes: toCount(aiResult.avgLikes),
-      avgComments: toCount(aiResult.avgComments),
       videoPreviewUrl: videoUrl,
       thumbnailUrl,
-      status: "analyzed"
+      status: "analyzed",
+      customCategories: aiResult.customCategories || {} // All extracted attributes stored cleanly here
     };
 
     await docRef.update({ ...updates, tempScrapeData: FieldValue.delete() });

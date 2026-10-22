@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import AverageViewsModal from './AverageViewsModal';
@@ -60,25 +60,13 @@ const TrashIcon = () => (
   </svg>
 );
 
-// Core (system) columns, in display order. Headers and cells are both generated from this list.
-const CORE_COLUMNS = [
-  { id: 'username', label: 'Username', kind: 'username' },
-  { id: 'link', label: 'Link', kind: 'link' },
-  { id: 'contact', label: 'Contact', kind: 'text', fallback: '' },
-  { id: 'nation', label: 'Nation', kind: 'text' },
-  { id: 'skinTone', label: 'Skin Tone', kind: 'select', options: ['Fair', 'Tan', 'Dark'] },
-  { id: 'bodyType', label: 'Body Type', kind: 'select', options: ['Fit', 'Slim', 'Fat', 'Curvy'] },
-  { id: 'reelType', label: 'Reel Type', kind: 'select', options: ['Hot', 'Erotic', 'Beautiful'] },
-  { id: 'specialPart', label: 'Special Part', kind: 'select', options: ['Whole body', 'Breast', 'Face', 'Stomach', 'Below stomach', 'Back'] },
-  { id: 'ageRange', label: 'Age', kind: 'select', options: ['18 to 28', '29 to 35', '36+'] },
-  { id: 'playable', label: 'Playable', kind: 'playable' },
-  { id: 'totalFollowers', label: 'Followers', kind: 'number' },
-  { id: 'avgViewsPerWeek', label: 'Avg Views', kind: 'avgViews' },
-  { id: 'avgLikes', label: 'Avg Likes', kind: 'number', fallback: 0 },
-  { id: 'avgComments', label: 'Avg Comments', kind: 'number', fallback: 0 }
-];
-
 const BATCH_SIZE = 10;
+
+// --- GLOBAL CACHE (Prevents Firebase reads on tab switch) ---
+let globalProfilesCache = null;
+let globalColumnsCache = null;
+let globalLastFetchTime = 0;
+const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
 // --- helpers ---
 const readStorage = (key, fallback) => {
@@ -91,9 +79,6 @@ const readStorage = (key, fallback) => {
   }
 };
 
-// Uses the shared axios instance so expired access tokens are refreshed automatically.
-// (The old raw fetch() calls skipped the refresh logic, which is what produced the 403s.)
-// Returns an object with .json() so the existing call sites keep working.
 const request = async (path, { method = 'GET', data } = {}) => {
   try {
     const res = await api.request({ url: path, method, data });
@@ -123,7 +108,6 @@ const copyText = async (text) => {
     await navigator.clipboard.writeText(text);
     return;
   }
-  // fallback for non-HTTPS contexts
   const ta = document.createElement('textarea');
   ta.value = text;
   ta.style.position = 'fixed';
@@ -137,13 +121,13 @@ const copyText = async (text) => {
 
 export default function ProfileDashboard() {
   const navigate = useNavigate();
-  const { isVideoTheme } = useOutletContext() || { isVideoTheme: false };
+  const { updateGlobalCount } = useOutletContext() || {};
 
-  const [profiles, setProfiles] = useState([]);
-  const [customColumns, setCustomColumns] = useState([]);
-  const [fetching, setFetching] = useState(false);
+  // 1. Initialize state with global cache
+  const [profiles, setProfiles] = useState(globalProfilesCache || []);
+  const [customColumns, setCustomColumns] = useState(globalColumnsCache || []);
+  const [fetching, setFetching] = useState(!globalProfilesCache);
   const [deleting, setDeleting] = useState(false);
-  const [bgVideoCount, setBgVideoCount] = useState(5);
 
   const [isAvgCalcOpen, setIsAvgCalcOpen] = useState(false);
   const [isAddCategoryOpen, setIsAddCategoryOpen] = useState(false);
@@ -158,35 +142,35 @@ export default function ProfileDashboard() {
 
   const [contextMenu, setContextMenu] = useState(null);
 
-  // Hidden/renamed Core System Columns (shared with the Staging page via localStorage)
   const [hiddenCols, setHiddenCols] = useState(() => readStorage('hiddenCols', []));
   const [renamedCols, setRenamedCols] = useState(() => readStorage('renamedCols', {}));
 
-  // Dynamic Background Video Calculator + close context menu on click
+  // 2. Keep the global cache automatically synchronized with any edits/deletes
   useEffect(() => {
-    const calculateVideoCount = () => {
-      const videoWidth = window.innerHeight * (9 / 16);
-      const count = Math.ceil(window.innerWidth / videoWidth);
-      setBgVideoCount(count || 5);
-    };
+    if (profiles !== globalProfilesCache) {
+      globalProfilesCache = profiles;
+    }
+    if (updateGlobalCount) {
+      updateGlobalCount(profiles.length);
+    }
+  }, [profiles, updateGlobalCount]);
 
-    calculateVideoCount();
-    window.addEventListener('resize', calculateVideoCount);
+  useEffect(() => {
+    if (customColumns !== globalColumnsCache) {
+      globalColumnsCache = customColumns;
+    }
+  }, [customColumns]);
 
+  useEffect(() => {
     const closeMenu = () => setContextMenu(null);
     window.addEventListener('click', closeMenu);
-
-    return () => {
-      window.removeEventListener('resize', calculateVideoCount);
-      window.removeEventListener('click', closeMenu);
-    };
+    return () => window.removeEventListener('click', closeMenu);
   }, []);
 
   useEffect(() => {
     fetchData();
   }, []);
 
-  // Persist renamed/hidden state when changed
   useEffect(() => {
     try {
       localStorage.setItem('hiddenCols', JSON.stringify(hiddenCols));
@@ -197,6 +181,12 @@ export default function ProfileDashboard() {
   }, [hiddenCols, renamedCols]);
 
   const fetchData = async () => {
+    // 3. Skip fetching if cache is valid (saving Firebase reads)
+    const now = Date.now();
+    if (globalProfilesCache && globalColumnsCache && (now - globalLastFetchTime < CACHE_DURATION_MS)) {
+      return; 
+    }
+
     setFetching(true);
     try {
       const [profilesRes, columnsRes] = await Promise.all([
@@ -207,8 +197,16 @@ export default function ProfileDashboard() {
       const profilesData = await profilesRes.json();
       const columnsData = await columnsRes.json();
 
-      setProfiles(Array.isArray(profilesData) ? profilesData : (profilesData.data || []));
-      setCustomColumns(Array.isArray(columnsData) ? columnsData : (columnsData.data || []));
+      const fetchedProfiles = Array.isArray(profilesData) ? profilesData : (profilesData.data || []);
+      const fetchedColumns = Array.isArray(columnsData) ? columnsData : (columnsData.data || []);
+
+      // 4. Update the cache with fresh data
+      globalProfilesCache = fetchedProfiles;
+      globalColumnsCache = fetchedColumns;
+      globalLastFetchTime = Date.now();
+
+      setProfiles(fetchedProfiles);
+      setCustomColumns(fetchedColumns);
     } catch (error) {
       console.error("Error fetching data:", error);
       toast.error(error.message || "Failed to load profiles.");
@@ -311,7 +309,6 @@ export default function ProfileDashboard() {
       return username.includes(query) || nation.includes(query);
     });
 
-    // Empty values always sort last, whichever direction is selected
     processed.sort((a, b) => {
       const av = getValue(a);
       const bv = getValue(b);
@@ -326,9 +323,7 @@ export default function ProfileDashboard() {
 
   const handleCopyAll = () => {
     if (filteredAndSortedProfiles.length === 0) return;
-
     const textToCopy = filteredAndSortedProfiles.map(p => p.username).join('\n');
-
     copyText(textToCopy)
       .then(() => toast.success(`Copied ${filteredAndSortedProfiles.length} usernames!`))
       .catch(() => toast.error('Failed to copy'));
@@ -336,7 +331,6 @@ export default function ProfileDashboard() {
 
   const handleDeleteAll = async () => {
     if (filteredAndSortedProfiles.length === 0) return;
-
     if (!window.confirm(`Permanently delete all ${filteredAndSortedProfiles.length} visible profiles?`)) return;
 
     setDeleting(true);
@@ -344,7 +338,6 @@ export default function ProfileDashboard() {
     const idsToDelete = new Set(toDelete.map(p => p.id));
     setProfiles(prev => prev.filter(p => !idsToDelete.has(p.id)));
 
-    // Small batches so we don't fire hundreds of requests at once; track failures individually
     const failed = [];
     for (let i = 0; i < toDelete.length; i += BATCH_SIZE) {
       const batch = toDelete.slice(i, i + BATCH_SIZE);
@@ -357,7 +350,7 @@ export default function ProfileDashboard() {
     }
 
     if (failed.length > 0) {
-      setProfiles(prev => [...failed, ...prev]); // put back what didn't actually delete
+      setProfiles(prev => [...failed, ...prev]); 
       toast.error(`${failed.length} profile(s) could not be deleted.`);
     } else {
       toast.success(`Deleted ${toDelete.length} profiles!`);
@@ -381,16 +374,10 @@ export default function ProfileDashboard() {
     } catch (error) {
       console.error(`Failed to update ${field}:`, error);
       toast.error(`Failed to save ${field}.`);
-      setProfiles(prev => prev.map(p => p.id === profileId ? original : p)); // roll back
+      setProfiles(prev => prev.map(p => p.id === profileId ? original : p)); 
     }
   };
 
-  /*
-    FIX: drag-fill indices come from the rows as DISPLAYED (filtered + sorted), but this
-    used to slice/map the raw `profiles` array, so with any search or sort active it
-    filled the wrong rows. It now resolves the affected rows from the displayed list and
-    updates by id. Dragging upward (start > end) is also handled.
-  */
   const dragFill = useDragFill(async (startIdx, endIdx, columnKey, newValue) => {
     const lo = Math.min(startIdx, endIdx);
     const hi = Math.max(startIdx, endIdx);
@@ -431,16 +418,12 @@ export default function ProfileDashboard() {
     });
   };
 
-  // Helper for the repeated drag-fill handlers on editable cells
   const dragProps = (index, key, value) => ({
     onMouseDown: () => dragFill.handleMouseDown(index, key, value),
     onMouseEnter: () => dragFill.handleMouseEnter(index, key),
     onMouseUp: () => dragFill.handleMouseUp(index, key)
   });
 
-  // NOTE: this is a plain render function, not a component. It used to be a component
-  // defined inside ProfileDashboard, which React remounted on every render.
-  // Sticky/background/border styling now comes from the stylesheet.
   const renderHeader = (label, sortKey, isCustom = false, sortable = true) => {
     if (hiddenCols.includes(sortKey)) return null;
     const displayLabel = renamedCols[sortKey] || label;
@@ -462,170 +445,62 @@ export default function ProfileDashboard() {
   const renderCoreCell = (col, profile, index) => {
     if (hiddenCols.includes(col.id)) return null;
 
-    switch (col.kind) {
-      case 'username':
-        return (
-          <td key={col.id} style={{ fontWeight: 600 }}>
-            <EditableCell
-              value={profile.username}
-              onSave={(val) => handleCellEdit(profile.id, 'username', val)}
-            />
-          </td>
-        );
-
-      case 'link':
-        return (
-          <td key={col.id}>
-            {profile.sourceUrl ? (
-              <a
-                href={profile.sourceUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="action-btn btn-outline"
-                style={{ textDecoration: 'none', gap: 4, padding: '4px 8px' }}
-              >
-                <ExternalLinkIcon /> View
-              </a>
-            ) : '-'}
-          </td>
-        );
-
-      case 'playable':
-        return (
-          <td
-            key={col.id}
-            onClick={() => handleCellEdit(profile.id, 'playable', !profile.playable)}
-            style={{ cursor: 'pointer', userSelect: 'none' }}
-          >
-            <span className={`status-badge ${profile.playable ? 'available' : 'rejected'}`}>
-              {profile.playable ? 'Yes' : 'No'}
-            </span>
-          </td>
-        );
-
-      case 'avgViews':
-        return (
-          <td
-            key={col.id}
-            style={{ color: 'var(--text-faint)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}
-            onClick={() => {
-              setSelectedProfileId(profile.id);
-              setIsAvgCalcOpen(true);
-            }}
-          >
-            {profile.avgViewsPerWeek > 0 ? profile.avgViewsPerWeek.toLocaleString() : 'Calculate ➔'}
-          </td>
-        );
-
-      case 'select':
-        return (
-          <td key={col.id} {...dragProps(index, col.id, profile[col.id])}>
-            <EditableCell
-              type="select"
-              value={profile[col.id]}
-              options={col.options}
-              onSave={(val) => handleCellEdit(profile.id, col.id, val)}
-            />
-          </td>
-        );
-
-      case 'number':
-        return (
-          <td key={col.id} {...dragProps(index, col.id, profile[col.id])}>
-            <EditableCell
-              type="number"
-              value={profile[col.id] ?? col.fallback}
-              onSave={(val) => handleCellEdit(profile.id, col.id, Number(val))}
-            />
-          </td>
-        );
-
-      default: // text
-        return (
-          <td key={col.id} {...dragProps(index, col.id, profile[col.id])}>
-            <EditableCell
-              value={profile[col.id] ?? col.fallback}
-              onSave={(val) => handleCellEdit(profile.id, col.id, val)}
-            />
-          </td>
-        );
+    if (col.columnId === 'username') {
+      return (
+        <td key={col.columnId} style={{ fontWeight: 600 }}>
+          <EditableCell
+            value={profile.username}
+            onSave={(val) => handleCellEdit(profile.id, 'username', val)}
+          />
+        </td>
+      );
     }
+
+    if (col.columnId === 'link') {
+      return (
+        <td key={col.columnId}>
+          {profile.sourceUrl ? (
+            <a
+              href={profile.sourceUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="action-btn btn-outline"
+              style={{ textDecoration: 'none', gap: 4, padding: '4px 8px' }}
+            >
+              <ExternalLinkIcon /> View
+            </a>
+          ) : '-'}
+        </td>
+      );
+    }
+
+    // Treat everything else as standard editable cells (so Nation can also be modified)
+    return (
+      <td key={col.columnId} {...dragProps(index, col.columnId, profile[col.columnId])}>
+        <EditableCell
+          value={profile[col.columnId] || ''}
+          onSave={(val) => handleCellEdit(profile.id, col.columnId, val)}
+        />
+      </td>
+    );
   };
 
-  // ---------- Video theme ----------
-  // Instagram CDN video links expire, so stored URLs can't be trusted. When the theme is on we
-  // ask the server for fresh links for the rows at the top of the current view, and only
-  // play videos confirmed fresh this session.
-  const [freshVideoIds, setFreshVideoIds] = useState(() => new Set());
-  const requestedVideoIds = useRef(new Set());
+  // Add a manual refresh function to break the cache if needed
+  const forceRefreshData = () => {
+    globalProfilesCache = null;
+    globalColumnsCache = null;
+    globalLastFetchTime = 0;
+    fetchData();
+  };
 
-  const videoCandidateIds = useMemo(
-    () => filteredAndSortedProfiles
-      .filter(p => p.sourceUrl)
-      .slice(0, Math.min(12, bgVideoCount + 2))   // two spares in case some have no video
-      .map(p => p.id),
-    [filteredAndSortedProfiles, bgVideoCount]
-  );
-  const videoCandidateKey = videoCandidateIds.join(',');
-
-  useEffect(() => {
-    if (!isVideoTheme || fetching) return;
-
-    const toRefresh = videoCandidateIds.filter(id => !requestedVideoIds.current.has(id));
-    if (toRefresh.length === 0) return;
-
-    toRefresh.forEach(id => requestedVideoIds.current.add(id));
-
-    (async () => {
-      try {
-        const { data } = await api.post('/profiles/refresh-videos', { ids: toRefresh });
-        const good = (data.data || []).filter(r => r.videoPreviewUrl);
-        if (good.length === 0) return;
-
-        const byId = new Map(good.map(r => [r.id, r.videoPreviewUrl]));
-        setProfiles(prev => prev.map(p => byId.has(p.id) ? { ...p, videoPreviewUrl: byId.get(p.id) } : p));
-        setFreshVideoIds(prev => new Set([...prev, ...byId.keys()]));
-      } catch (error) {
-        console.error('Video refresh failed:', error);
-        toRefresh.forEach(id => requestedVideoIds.current.delete(id));   // allow a retry later
-      }
-    })();
-  }, [isVideoTheme, fetching, videoCandidateKey]);
-
-  const bgVideos = useMemo(
-    () => filteredAndSortedProfiles
-      .filter(p => p.videoPreviewUrl && freshVideoIds.has(p.id))
-      .slice(0, bgVideoCount),
-    [filteredAndSortedProfiles, freshVideoIds, bgVideoCount]
-  );
-
-  const visibleCoreCount = CORE_COLUMNS.filter(c => !hiddenCols.includes(c.id)).length;
-  const visibleCustomCount = customColumns.filter(c => !hiddenCols.includes(c.columnId)).length;
-  const totalColSpan = visibleCoreCount + visibleCustomCount + 1;
+  // Calculate dynamic colspan based on actual columns present for a user
+  const totalColSpan = customColumns.filter(c => !hiddenCols.includes(c.columnId)).length + 1; // +1 for Actions
 
   return (
     <div
       className="dashboard-container relative w-full flex flex-col"
       onMouseUp={dragFill.handleGlobalMouseUp}
     >
-
-      {/* DYNAMIC VIDEO BACKGROUND (was a solid black box with the Instagram link as video src) */}
-      {isVideoTheme && (
-        <div className="video-bg-container">
-          {bgVideos.map((p) => (
-            <video
-              key={p.id}
-              src={p.videoPreviewUrl}
-              autoPlay
-              loop
-              muted
-              playsInline
-            />
-          ))}
-        </div>
-      )}
-
-      {/* Top Action Toolbar */}
       <div
         className="dashboard-toolbar glass-panel flex-shrink-0"
         style={{
@@ -643,7 +518,7 @@ export default function ProfileDashboard() {
           <SearchIcon />
           <input
             type="text"
-            placeholder="Search by username or nation..."
+            placeholder="Search by username..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="search-input"
@@ -651,6 +526,11 @@ export default function ProfileDashboard() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          
+          <button onClick={forceRefreshData} className="action-btn" style={{ padding: '8px 12px' }}>
+            Refresh Data
+          </button>
+          
           <button onClick={handleCopyAll} className="action-btn copy-btn" style={{ padding: '8px 12px' }}>
             <CopyIcon /> Copy All Usernames
           </button>
@@ -666,7 +546,7 @@ export default function ProfileDashboard() {
           </button>
 
           <button className="add-category-btn" onClick={() => setIsAddCategoryOpen(true)} style={{ padding: '8px 12px' }}>
-            <PlusIcon /> Add Category
+            <PlusIcon /> Add Column
           </button>
 
           <button className="add-category-btn mass-upload-btn" onClick={() => setIsMassUploadOpen(true)} style={{ padding: '8px 12px' }}>
@@ -680,18 +560,13 @@ export default function ProfileDashboard() {
         customColumns={customColumns}
       />
 
-      {/* SCROLLABLE Table Wrapper (border/radius come from .glass-panel; the old
-          var(--border-light) was never defined, which silently dropped the border) */}
       <div className="table-wrapper glass-panel flex-1" style={{ marginTop: 0 }}>
         <table className="profile-table w-full text-left">
           <thead>
             <tr>
-              {CORE_COLUMNS.map(col =>
-                renderHeader(col.label, col.id, false, col.kind !== 'link')
-              )}
-
+              {/* Render dynamic columns directly from customColumns */}
               {customColumns.map(col =>
-                renderHeader(col.displayName, col.columnId, true)
+                renderHeader(col.displayName, col.columnId, col.isCustom)
               )}
 
               <th>Actions</th>
@@ -708,10 +583,15 @@ export default function ProfileDashboard() {
             ) : (
               filteredAndSortedProfiles.map((profile, index) => (
                 <tr key={profile.id}>
-                  {CORE_COLUMNS.map(col => renderCoreCell(col, profile, index))}
-
+                  
+                  {/* Iterate over ALL custom columns. For core/base columns (isCustom: false), render natively. For custom columns, read from customCategories object */}
                   {customColumns.map(col => {
                     if (hiddenCols.includes(col.columnId)) return null;
+
+                    if (!col.isCustom) {
+                       return renderCoreCell(col, profile, index);
+                    }
+
                     const customValue = profile.customCategories?.[col.columnId] || '';
                     return (
                       <td key={col.columnId} {...dragProps(index, col.columnId, customValue)}>
