@@ -1,13 +1,18 @@
-import { db } from "../config/firebase.js";
+// In-memory, per-instance set of "userId_username" keys that THIS server instance has seen.
+//
+// It is deliberately NOT pre-loaded from Firestore. The old warm-up ran
+// db.collection("profiles").select().get() on every serverless cold start, which bills
+// one read per document across ALL users and exhausted the daily Firestore quota
+// (RESOURCE_EXHAUSTED). It also stored document IDs while lookups use
+// `${userId}_${normalizedUsername}` keys, so it never matched anything anyway.
+//
+// Firestore is the source of truth. Treat a `false` from has() as "unknown", never as
+// "definitely absent", and verify with a query when correctness matters.
 
-// We use an in-memory Set. It provides sub-millisecond O(1) lookups.
-// For < 1,000,000 usernames, this uses negligible RAM (~10-20MB) 
-// and completely avoids the false positives of a traditional Bloom Filter.
 const memoryFilter = new Set();
-let isInitialized = false;
 
 /**
- * Normalizes a handle for consistent matching (lowercase, no @, trimmed)
+ * Normalizes a key for consistent matching (lowercase, no leading @, trimmed)
  */
 const normalize = (username) => {
   if (!username || typeof username !== "string") return "";
@@ -15,40 +20,21 @@ const normalize = (username) => {
 };
 
 /**
- * Warms up the in-memory cache by fetching all existing usernames from Firestore.
- * Call this once in your main app.js or server startup file.
+ * Kept so existing imports keep working. It no longer reads from Firestore.
  */
 export const initializeBloomFilter = async () => {
-  if (isInitialized) return;
-
-  try {
-    console.log("🔄 [Bloom Filter] Warming up memory cache from Firestore...");
-    
-    // We only fetch the 'username' document IDs/fields to save bandwidth
-    const profilesSnapshot = await db.collection("profiles").select().get();
-    
-    profilesSnapshot.forEach((doc) => {
-      // Assuming the document ID is the username, or it's stored in the doc.
-      // Adjust doc.id to doc.data().username if your IDs are auto-generated.
-      memoryFilter.add(normalize(doc.id)); 
-    });
-
-    isInitialized = true;
-    console.log(`✅ [Bloom Filter] Warmed up with ${memoryFilter.size} profiles. Ready for sub-millisecond deduplication.`);
-  } catch (error) {
-    console.error("❌ [Bloom Filter] Failed to initialize:", error.message);
-  }
+  // Intentionally a no-op: see the note at the top of this file.
 };
 
 /**
- * Fast sub-millisecond check if a username might exist in the database.
+ * True only if this instance has already seen the key (added/approved during its lifetime).
  */
 export const has = (username) => {
   return memoryFilter.has(normalize(username));
 };
 
 /**
- * Add a new username to the filter (call this when a profile is approved/saved)
+ * Remember a key (call when a profile is approved/saved)
  */
 export const add = (username) => {
   const clean = normalize(username);
@@ -58,7 +44,7 @@ export const add = (username) => {
 };
 
 /**
- * Remove a username from the filter (call this when a profile is deleted)
+ * Forget a key (call when a profile is deleted)
  */
 export const remove = (username) => {
   const clean = normalize(username);
@@ -68,7 +54,7 @@ export const remove = (username) => {
 };
 
 /**
- * Get current size of the filter
+ * Number of keys currently remembered by this instance
  */
 export const size = () => {
   return memoryFilter.size;

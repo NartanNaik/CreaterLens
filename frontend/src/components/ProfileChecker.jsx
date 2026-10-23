@@ -4,7 +4,7 @@ import api from '../services/api';
 
 // --- Inline SVGs ---
 const SearchIcon = () => (
-  <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position: 'absolute', left: '12px', color: 'var(--text-faint)' }}>
+  <svg className="svg-icon search-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="11" cy="11" r="8"></circle>
     <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
   </svg>
@@ -19,7 +19,7 @@ const WarningIcon = () => (
 );
 
 const PlusIcon = () => (
-  <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}>
+  <svg className="svg-icon icon-mr-6" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <line x1="12" y1="5" x2="12" y2="19"></line>
     <line x1="5" y1="12" x2="19" y2="12"></line>
   </svg>
@@ -34,13 +34,13 @@ const CheckCircleIcon = () => (
 
 const INITIAL_FORM = {
   playable: 'Yes',
-  customCategories: {} 
+  customCategories: {}
 };
 
 export default function ProfileChecker({ onProfileAdded, customColumns = [] }) {
   const [username, setUsername] = useState('');
-  const [link, setLink] = useState(''); 
-  const [status, setStatus] = useState(null);      
+  const [link, setLink] = useState('');
+  const [status, setStatus] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [loading, setLoading] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -48,6 +48,8 @@ export default function ProfileChecker({ onProfileAdded, customColumns = [] }) {
 
   const checkReqRef = useRef(0);
 
+  // Values for every extra column are held together here, keyed by columnId.
+  // They are split into core fields / customCategories when saving (see handleAdd).
   const setCustomField = (columnId, value) =>
     setFormData(prev => ({
       ...prev,
@@ -55,15 +57,15 @@ export default function ProfileChecker({ onProfileAdded, customColumns = [] }) {
     }));
 
   const handleUsernameChange = (e) => {
-    checkReqRef.current += 1;   
-    
+    checkReqRef.current += 1;
+
     const val = e.target.value;
     setUsername(val);
-    
+
     if (val.includes('instagram.com')) {
       setLink(val);
     }
-    
+
     setStatus(null);
     setErrorMsg('');
     setLoading(false);
@@ -99,14 +101,23 @@ export default function ProfileChecker({ onProfileAdded, customColumns = [] }) {
     setAdding(true);
 
     try {
-      const customCategories = Object.fromEntries(
-        Object.entries(formData.customCategories).filter(([, v]) => v !== '' && v !== undefined)
-      );
+      // Columns the backend marks as non-custom live at the top level of the profile
+      // (the dashboard reads them from profile[columnId]); custom ones go in customCategories.
+      const isCoreColumn = new Map(customColumns.map(col => [col.columnId, col.isCustom === false]));
+      const coreFields = {};
+      const customCategories = {};
+
+      Object.entries(formData.customCategories).forEach(([key, value]) => {
+        if (value === '' || value === undefined) return;
+        if (isCoreColumn.get(key)) coreFields[key] = value;
+        else customCategories[key] = value;
+      });
 
       const payload = {
+        ...coreFields,
         customCategories,
         username: username.trim(),
-        sourceUrl: link.trim(), 
+        sourceUrl: link.trim(),
         playable: formData.playable === 'Yes'
       };
 
@@ -133,11 +144,13 @@ export default function ProfileChecker({ onProfileAdded, customColumns = [] }) {
     }
   };
 
-  return (
-    <div className="glass-panel flex-shrink-0" style={{ marginBottom: '16px', padding: '16px' }}>
+  const extraColumns = customColumns.filter(col => col.columnId !== 'username' && col.columnId !== 'link');
 
-      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-        <div className="search-bar-container" style={{ margin: 0, flex: 1, minWidth: '280px' }}>
+  return (
+    <div className="checker-panel glass-panel">
+
+      <div className="checker-row">
+        <div className="search-bar-container checker-search">
           <SearchIcon />
           <input
             type="text"
@@ -153,56 +166,53 @@ export default function ProfileChecker({ onProfileAdded, customColumns = [] }) {
         <button
           onClick={handleCheck}
           disabled={loading || !username.trim()}
-          className="action-btn btn-primary"
-          style={{ padding: '0 24px', flexShrink: 0 }}
+          className="action-btn btn-primary checker-btn"
         >
           {loading ? 'Checking...' : 'Check Username'}
         </button>
       </div>
 
       {status === 'exists' && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '16px', padding: '12px 14px', borderRadius: '8px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', color: 'var(--status-no)', fontSize: '14px', fontWeight: 600 }}>
+        <div className="checker-alert">
           <WarningIcon />
           <span>This user already exists in the database.</span>
         </div>
       )}
 
       {status === 'error' && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '16px', padding: '12px 14px', borderRadius: '8px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', color: 'var(--status-no)', fontSize: '14px', fontWeight: 600 }}>
+        <div className="checker-alert">
           <WarningIcon />
           <span>{errorMsg}</span>
         </div>
       )}
 
       {status === 'available' && (
-        <div style={{ marginTop: '16px', padding: '20px', background: 'rgba(255, 255, 255, 0.02)', borderRadius: '8px', border: '1px solid var(--glass-border-light)' }}>
+        <div className="checker-available">
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--status-yes)', marginBottom: '16px' }}>
+          <div className="checker-available-head">
             <CheckCircleIcon />
-            <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: 'var(--text-main)' }}>@{username.trim()} is available.</h3>
+            <h3 className="checker-available-title">@{username.trim()} is available.</h3>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+          <div className="checker-fields">
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Instagram Link</label>
+            <div className="checker-field">
+              <label className="checker-label">Instagram Link</label>
               <input
                 type="text"
                 placeholder="https://instagram.com/..."
                 value={link}
                 onChange={e => setLink(e.target.value)}
-                style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--glass-border-strong)', background: 'rgba(0, 0, 0, 0.2)', color: 'var(--text-main)', fontSize: '14px', outline: 'none' }}
               />
             </div>
 
-            {customColumns.filter(col => col.columnId !== 'username' && col.columnId !== 'link').map(col => (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }} key={col.columnId}>
-                <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{col.displayName}</label>
+            {extraColumns.map(col => (
+              <div className="checker-field" key={col.columnId}>
+                <label className="checker-label">{col.displayName}</label>
                 {col.inputType === 'dropdown' && Array.isArray(col.options) && col.options.length > 0 ? (
                   <select
                     value={formData.customCategories[col.columnId] || ''}
                     onChange={e => setCustomField(col.columnId, e.target.value)}
-                    style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--glass-border-strong)', background: 'rgba(0, 0, 0, 0.2)', color: 'var(--text-main)', fontSize: '14px', outline: 'none' }}
                   >
                     <option value="">Not set</option>
                     {col.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
@@ -212,7 +222,6 @@ export default function ProfileChecker({ onProfileAdded, customColumns = [] }) {
                     type="text"
                     value={formData.customCategories[col.columnId] || ''}
                     onChange={e => setCustomField(col.columnId, e.target.value)}
-                    style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--glass-border-strong)', background: 'rgba(0, 0, 0, 0.2)', color: 'var(--text-main)', fontSize: '14px', outline: 'none' }}
                   />
                 )}
               </div>
@@ -220,7 +229,7 @@ export default function ProfileChecker({ onProfileAdded, customColumns = [] }) {
 
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
+          <div className="checker-actions">
             <button
               onClick={handleAdd}
               disabled={adding}

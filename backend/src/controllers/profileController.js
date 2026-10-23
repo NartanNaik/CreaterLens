@@ -71,6 +71,11 @@ const sanitizeProfileData = (data = {}) => {
     }
   });
 
+  // Only http(s) links are allowed through (the dashboard renders this as an <a href>).
+  if (sanitized.sourceUrl !== undefined) {
+    sanitized.sourceUrl = profileService.cleanSourceUrl(sanitized.sourceUrl);
+  }
+
   return sanitized;
 };
 

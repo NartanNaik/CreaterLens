@@ -41,10 +41,23 @@ const aiProcessLimiter = rateLimit({
     legacyHeaders: false,
 });
 
+// Security: Rate limit heavy batch writes. Garbage Eater sends chunks of 50,
+// so 30 per minute allows roughly 1,500 items per minute.
+const bulkLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 30,
+    message: {
+        success: false,
+        error: "Bulk operation limit reached. Please wait a minute."
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
 // --- BULK & INGESTION ROUTES (Must be defined before parameterized /:id routes) ---
 router.post('/share', shareLimiter, shareReelController);
-router.post('/bulk-import', bulkImportStagingItemsController);
-router.post('/bulk-approve', bulkApproveStagingItemsController);
+router.post('/bulk-import', bulkLimiter, bulkImportStagingItemsController);
+router.post('/bulk-approve', bulkLimiter, bulkApproveStagingItemsController);
 router.post('/bulk-delete', bulkDeleteStagingItemsController);
 
 // --- QUEUE FETCH ROUTE ---

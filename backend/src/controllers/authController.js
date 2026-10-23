@@ -1,62 +1,81 @@
 import { OAuth2Client } from "google-auth-library";
+import { FieldPath } from "firebase-admin/firestore";
 import { db } from "../config/firebase.js";
 import { encryptKey } from "../services/encryptionService.js";
 import jwt from "jsonwebtoken";
 
-const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+// GOOGLE_CLIENT_ID may hold one Web client ID, or several separated by commas.
+// The Flutter app must use the Web client ID as serverClientId so the token audience matches.
+const GOOGLE_AUDIENCES = (process.env.GOOGLE_CLIENT_ID || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+const client = new OAuth2Client(GOOGLE_AUDIENCES[0]);
 const OWNER_EMAIL = "naiknartana@gmail.com";
 
+const isQuotaError = (err) =>
+  err?.code === 8 || /RESOURCE_EXHAUSTED/i.test(String(err?.message || ""));
+
 /**
- * Production Data Healer: Ensures all legacy unowned documents
- * are strictly assigned to the master account and have the required
- * index fields (like createdAt) so Firestore doesn't hide them.
+ * One-time legacy data claim for the owner account.
+ * Pages through each collection (400 docs at a time, only the needed fields)
+ * instead of loading a whole collection into memory.
+ * Returns true only if every collection was processed, so the caller
+ * sets legacyMigrated only after a full success and never re-scans afterwards.
  */
+const PAGE_SIZE = 400;
+
 const claimLegacyDataForOwner = async (ownerUserId) => {
   const collectionsToMigrate = ["profiles", "staging", "users_settings"];
+  let allOk = true;
 
   for (const colName of collectionsToMigrate) {
     try {
-      const snapshot = await db.collection(colName).get();
-      let batch = db.batch();
-      let count = 0;
+      let last = null;
 
-      for (const doc of snapshot.docs) {
-        const data = doc.data();
-        const updates = {};
+      for (;;) {
+        let q = db
+          .collection(colName)
+          .orderBy(FieldPath.documentId())
+          .select("userId", "createdAt", "timestamp", "dateAdded")
+          .limit(PAGE_SIZE);
+        if (last) q = q.startAfter(last);
 
-        // 1. Claim unowned or dummy data
-        if (!data.userId || data.userId === "admin" || data.userId === "test") {
-          updates.userId = ownerUserId;
-        }
+        const snapshot = await q.get();
+        if (snapshot.empty) break;
 
-        // 2. CRITICAL: Add missing createdAt field required by the Firestore Index
-        if (!data.createdAt) {
-          // Preserve existing timestamps if they used a different key, otherwise use now
-          updates.createdAt = data.timestamp || data.dateAdded || new Date().toISOString();
-        }
+        const batch = db.batch();
+        let pending = 0;
 
-        // If this document needs healing, add it to the batch
-        if (Object.keys(updates).length > 0) {
-          batch.update(doc.ref, updates);
-          count++;
+        for (const doc of snapshot.docs) {
+          const data = doc.data();
+          const updates = {};
 
-          // Commit in chunks of 490 (Firestore limit is 500 per batch)
-          if (count === 490) {
-            await batch.commit();
-            batch = db.batch();
-            count = 0;
+          if (!data.userId || data.userId === "admin" || data.userId === "test") {
+            updates.userId = ownerUserId;
+          }
+          if (!data.createdAt) {
+            updates.createdAt = data.timestamp || data.dateAdded || new Date().toISOString();
+          }
+
+          if (Object.keys(updates).length > 0) {
+            batch.update(doc.ref, updates);
+            pending++;
           }
         }
-      }
 
-      // Commit any remaining updates in the final batch
-      if (count > 0) {
-        await batch.commit();
+        if (pending > 0) await batch.commit();
+
+        last = snapshot.docs[snapshot.docs.length - 1];
+        if (snapshot.size < PAGE_SIZE) break;
       }
     } catch (err) {
+      allOk = false;
       console.error(`Failed to heal legacy collection ${colName}:`, err.message);
     }
   }
+
+  return allOk;
 };
 
 /**
@@ -102,36 +121,57 @@ const createOpenRouterUserKey = async (email) => {
   return encryptKey(rawApiKey);
 };
 
-export const googleLogin = async (req, res) => {
+/**
+ * Key provisioning must never block sign-in. If it fails, the user still logs in
+ * and the self-heal branch below retries on the next login.
+ */
+const tryCreateOpenRouterUserKey = async (email) => {
   try {
-    const { token } = req.body;
+    return await createOpenRouterUserKey(email);
+  } catch (err) {
+    console.error("OpenRouter key provisioning failed (will retry next login):", err.message);
+    return null;
+  }
+};
+
+export const googleLogin = async (req, res) => {
+  // Step 1 failures are auth errors (401). Everything after is a server-side problem.
+  let payload;
+  try {
+    const { token } = req.body || {};
 
     if (!token) {
-      return res.status(400).json({ 
-        success: false, 
-        error: "Google token is required." 
+      return res.status(400).json({
+        success: false,
+        error: "Google token is required."
       });
     }
 
-    // 1. Verify Google Token securely
     const ticket = await client.verifyIdToken({
       idToken: token,
-      audience: process.env.GOOGLE_CLIENT_ID,
+      audience: GOOGLE_AUDIENCES.length > 1 ? GOOGLE_AUDIENCES : GOOGLE_AUDIENCES[0],
     });
-    
-    const payload = ticket.getPayload();
+    payload = ticket.getPayload();
+  } catch (error) {
+    console.error("Google token verification failed:", error.message);
+    return res.status(401).json({
+      success: false,
+      error: "Google sign-in could not be verified."
+    });
+  }
+
+  try {
     const userId = payload.sub; // Google's immutable unique ID for this user
     const email = (payload.email || "").toLowerCase().trim();
 
-    // 2. Fetch User & Settings Data
+    // 2. Fetch user + settings in a single round trip
     const userRef = db.collection("users").doc(userId);
-    const userDoc = await userRef.get();
-    
     const settingsRef = db.collection("users_settings").doc(userId);
-    const settingsDoc = await settingsRef.get();
+    const [userDoc, settingsDoc] = await db.getAll(userRef, settingsRef);
+    const isNewUser = !userDoc.exists;
 
-    // 3. Initialize Default Columns for NEW (or uninitialized) Users
-    // Username and Link are core (isCustom: false). Nation is dynamic/deletable (isCustom: true).
+    // 3. Default columns + onboarding flags for new (or uninitialised) users.
+    // Username and Link are core (isCustom: false). Nation is deletable (isCustom: true).
     if (!settingsDoc.exists) {
       await settingsRef.set({
         userId,
@@ -140,42 +180,57 @@ export const googleLogin = async (req, res) => {
           { columnId: "link", displayName: "Link", inputType: "text", isCustom: false },
           { columnId: "nation", displayName: "Nation", inputType: "text", isCustom: true }
         ],
+        onboardingDone: false,
+        tourDone: false,
         createdAt: new Date().toISOString()
       });
+    } else {
+      // Backfill the flags once. Brand-new accounts get the setup page and tour;
+      // accounts that already existed are treated as done.
+      const s = settingsDoc.data() || {};
+      const backfill = {};
+      if (typeof s.onboardingDone !== "boolean") backfill.onboardingDone = !isNewUser;
+      if (typeof s.tourDone !== "boolean") backfill.tourDone = !isNewUser;
+      if (Object.keys(backfill).length > 0) {
+        await settingsRef.set(backfill, { merge: true });
+      }
     }
 
-    // 4. Handle User Account Creation & Key Generation
-    if (!userDoc.exists) {
-      // NEW USER: Spawn a $0 limit OpenRouter Key
-      const encryptedOrKey = await createOpenRouterUserKey(email);
+    // 4. Account creation and key generation
+    if (isNewUser) {
+      const encryptedOrKey = await tryCreateOpenRouterUserKey(email);
+      const isOwner = email === OWNER_EMAIL;
 
-      // Save isolated user profile with their securely Encrypted Key
       await userRef.set({
         email,
         name: payload.name || "",
         picture: payload.picture || "",
-        role: email === OWNER_EMAIL ? "owner" : "user",
-        encryptedOrKey,
-        legacyMigrated: email === OWNER_EMAIL,
+        role: isOwner ? "owner" : "user",
+        encryptedOrKey: encryptedOrKey || null,
+        legacyMigrated: false,
         createdAt: new Date().toISOString()
       });
 
-      if (email === OWNER_EMAIL) {
-        await claimLegacyDataForOwner(userId);
+      if (isOwner) {
+        const ok = await claimLegacyDataForOwner(userId);
+        if (ok) await userRef.update({ legacyMigrated: true });
+      } else {
+        await userRef.update({ legacyMigrated: true }); // nothing to migrate for normal users
       }
     } else {
       const existingData = userDoc.data() || {};
       const updates = {};
 
-      // Self-heal: If user doc exists without an OpenRouter key, generate it now
+      // Self-heal: user doc exists without an OpenRouter key
       if (!existingData.encryptedOrKey) {
-        updates.encryptedOrKey = await createOpenRouterUserKey(email);
+        const encryptedOrKey = await tryCreateOpenRouterUserKey(email);
+        if (encryptedOrKey) updates.encryptedOrKey = encryptedOrKey;
       }
 
-      // Ensure owner legacy data is claimed once
+      // Owner legacy data is claimed once, and the flag is set only after full success
       if (email === OWNER_EMAIL && !existingData.legacyMigrated) {
-        await claimLegacyDataForOwner(userId);
-        updates.legacyMigrated = true;
+        const ok = await claimLegacyDataForOwner(userId);
+        if (ok) updates.legacyMigrated = true;
       }
 
       if (Object.keys(updates).length > 0) {
@@ -183,34 +238,40 @@ export const googleLogin = async (req, res) => {
       }
     }
 
-    // 5. Generate internal JWT for frontend session persistence
+    // 5. Internal JWT for session persistence (web and Flutter)
     const sessionToken = jwt.sign(
-      { id: userId, email }, 
-      process.env.JWT_SECRET, 
+      { id: userId, email },
+      process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
-    
-    return res.status(200).json({ 
-      success: true, 
-      token: sessionToken, 
-      user: { 
-        id: userId, 
-        name: payload.name, 
-        email 
-      } 
-    });
 
+    return res.status(200).json({
+      success: true,
+      token: sessionToken,
+      user: {
+        id: userId,
+        name: payload.name,
+        email
+      }
+    });
   } catch (error) {
     console.error("Google Auth Error:", error);
-    return res.status(401).json({ 
-      success: false, 
-      error: error.message || "Authentication failed." 
+    if (isQuotaError(error)) {
+      return res.status(503).json({
+        success: false,
+        code: "QUOTA_EXCEEDED",
+        error: "Database quota exceeded. Please try again later."
+      });
+    }
+    return res.status(500).json({
+      success: false,
+      error: "Sign-in failed. Please try again."
     });
   }
 };
 
 /**
- * Handle token refresh requests if your frontend relies on a refresh cycle
+ * Token refresh: accepts an expired token, issues a fresh 7-day one.
  */
 export const refreshTokenController = async (req, res) => {
   try {
@@ -220,18 +281,17 @@ export const refreshTokenController = async (req, res) => {
     }
 
     const token = authHeader.split(" ")[1];
-    
+
     // Ignore expiration on the old token just to decode the user payload
     const decoded = jwt.verify(token, process.env.JWT_SECRET, { ignoreExpiration: true });
-    
+
     if (!decoded || !decoded.id) {
       throw new Error("Invalid token payload");
     }
 
-    // Issue a fresh token
     const newToken = jwt.sign(
-      { id: decoded.id, email: decoded.email }, 
-      process.env.JWT_SECRET, 
+      { id: decoded.id, email: decoded.email },
+      process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
 
@@ -240,7 +300,7 @@ export const refreshTokenController = async (req, res) => {
       token: newToken
     });
   } catch (error) {
-    console.error("Token refresh failed:", error);
+    console.error("Token refresh failed:", error.message);
     return res.status(403).json({
       success: false,
       error: "Invalid or expired session."

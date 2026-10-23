@@ -6,7 +6,6 @@ import profileRoutes from "./routes/profileRoutes.js";
 import attributeRoutes from "./routes/attributeRoutes.js";
 import settingsRoutes from "./routes/settingsRoutes.js";
 import stagingRoutes from "./routes/stagingRoutes.js";
-import { initializeBloomFilter } from "./services/bloomFilterService.js";
 
 dotenv.config();
 
@@ -17,7 +16,7 @@ app.set("trust proxy", 1);
 
 const allowedOrigins = [
   process.env.CLIENT_URL,
-  "https://pink-data.vercel.app", 
+  "https://pink-data.vercel.app",
   "http://localhost:5173"
 ].filter(Boolean);
 
@@ -26,7 +25,7 @@ const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps, curl, or Postman)
     if (!origin) return callback(null, true);
-    
+
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
@@ -45,8 +44,8 @@ app.use(cors(corsOptions));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// Initialize the Bloom Filter in the background to warm up the cache
-initializeBloomFilter().catch(console.error);
+// NOTE: the startup "Bloom Filter" warm-up was removed on purpose. It scanned the whole
+// profiles collection on every serverless cold start and burned the daily Firestore read quota.
 
 app.get("/", (req, res) => {
   res.status(200).json({

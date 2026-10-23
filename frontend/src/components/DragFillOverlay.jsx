@@ -15,7 +15,8 @@ export default function DragFillOverlay({ visible, value, count }) {
   const posRef = useRef({ x: -9999, y: -9999 });
 
   // Position the pill near the cursor, flipping or clamping so it stays on screen.
-  // Writes straight to the element's style, so cursor movement causes no React re-renders.
+  // Only CSS custom properties are written (read by .drag-fill-pill in App.css),
+  // so cursor movement causes no React re-renders and no inline style props.
   const place = () => {
     const el = pillRef.current;
     if (!el) return;
@@ -34,7 +35,8 @@ export default function DragFillOverlay({ visible, value, count }) {
     left = Math.max(MARGIN, Math.min(left, vw - w - MARGIN));
     top = Math.max(MARGIN, Math.min(top, vh - h - MARGIN));
 
-    el.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`;
+    el.style.setProperty('--drag-x', `${Math.round(left)}px`);
+    el.style.setProperty('--drag-y', `${Math.round(top)}px`);
   };
 
   // Always remember the last cursor position, so the pill appears in the right place

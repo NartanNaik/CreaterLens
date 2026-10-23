@@ -4,6 +4,28 @@ import * as bloomFilterService from './bloomFilterService.js';
 // We are targeting the active 'profiles' collection
 const profilesCollection = db.collection('profiles');
 
+// Firestore allows up to 30 values in an `in` filter.
+const IN_QUERY_LIMIT = 30;
+// How many `in` queries to run at once during mass upload.
+const IN_QUERY_PARALLELISM = 10;
+
+/**
+ * Returns a safe http(s) URL string, or '' if the input is empty/invalid.
+ * Blocks javascript:, data: etc., because this value is rendered as a link in the dashboard.
+ */
+export const cleanSourceUrl = (value) => {
+    if (typeof value !== 'string') return '';
+    const trimmed = value.trim().slice(0, 2048);
+    if (!trimmed) return '';
+
+    try {
+        const parsed = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
+        return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.toString() : '';
+    } catch {
+        return '';
+    }
+};
+
 /**
  * 1. The Uniqueness Checker
  * Checks if a profile already exists in the user's database.
@@ -13,13 +35,14 @@ export const checkProfileExists = async (username, userId) => {
     const snapshot = await profilesCollection
         .where('userId', '==', userId)
         .where('normalizedUsername', '==', normalized)
+        .limit(1)
         .get();
     return !snapshot.empty;
 };
 
 /**
  * 2. The Insertion Logic
- * Creates a new profile with strict numeric validation, ownership, and syncs it to the Bloom Filter.
+ * Creates a new profile with strict numeric validation and ownership.
  */
 export const addProfile = async (profileData) => {
     const userId = profileData.userId;
@@ -46,6 +69,8 @@ export const addProfile = async (profileData) => {
         specialPart: profileData.specialPart || '',
         ageRange: profileData.ageRange || '',
         playable: profileData.playable || false,
+        // Pasted Instagram link (was silently dropped before, so manual adds showed "-" in the Link column)
+        sourceUrl: cleanSourceUrl(profileData.sourceUrl),
         // Edge Case Protection: Force non-negative integers. No NaNs.
         totalFollowers: Math.max(0, parseInt(profileData.totalFollowers, 10) || 0),
         avgViewsPerWeek: Math.max(0, parseInt(profileData.avgViewsPerWeek, 10) || 0),
@@ -55,7 +80,7 @@ export const addProfile = async (profileData) => {
 
     const docRef = await profilesCollection.add(newProfile);
 
-    // Sync with memory cache scoped by user
+    // Remember it for this instance's lifetime (scoped by user)
     bloomFilterService.add(`${userId}_${normalizedUsername}`);
 
     return { id: docRef.id, ...newProfile };
@@ -64,6 +89,7 @@ export const addProfile = async (profileData) => {
 /**
  * 3. The Fetch Logic
  * Retrieves all profiles for the logged-in user to populate the frontend table.
+ * Sorted in memory: userId + orderBy("createdAt") would need a composite index.
  */
 export const getProfiles = async (userId, category = '') => {
     if (!userId) throw new Error('Unauthorized: userId is required.');
@@ -74,13 +100,14 @@ export const getProfiles = async (userId, category = '') => {
         query = query.where('category', '==', category);
     }
 
-    query = query.orderBy('createdAt', 'desc');
-
     const snapshot = await query.get();
-    return snapshot.docs.map(doc => ({
+    const profiles = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
     }));
+
+    profiles.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+    return profiles;
 };
 
 /**
@@ -112,7 +139,7 @@ export const updateProfile = async (profileId, updateData, userId) => {
 
 /**
  * 5. The Delete Logic
- * Removes a profile and clears its handle from the Bloom Filter memory cache for that user.
+ * Removes a profile and forgets its handle in this instance's memory.
  */
 export const deleteProfile = async (profileId, userId) => {
     if (!userId) throw new Error('Unauthorized: userId is required.');
@@ -130,20 +157,56 @@ export const deleteProfile = async (profileId, userId) => {
 };
 
 /**
+ * Finds which of the given normalized usernames this user already has.
+ * Uses `in` queries on a single field (no composite index needed) and filters by
+ * userId in memory, so reads scale with the matches found, not with collection size.
+ */
+const findExistingNormalizedNames = async (normalizedNames, userId) => {
+    const existing = new Set();
+
+    const chunks = [];
+    for (let i = 0; i < normalizedNames.length; i += IN_QUERY_LIMIT) {
+        chunks.push(normalizedNames.slice(i, i + IN_QUERY_LIMIT));
+    }
+
+    for (let i = 0; i < chunks.length; i += IN_QUERY_PARALLELISM) {
+        const group = chunks.slice(i, i + IN_QUERY_PARALLELISM);
+        const snapshots = await Promise.all(
+            group.map(chunk => profilesCollection.where('normalizedUsername', 'in', chunk).get())
+        );
+
+        snapshots.forEach(snapshot => {
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                if (data.userId === userId) existing.add(data.normalizedUsername);
+            });
+        });
+    }
+
+    return existing;
+};
+
+/**
  * 6. Mass Upload Logic
- * Efficiently processes bulk uploads, sanitizes data, and syncs the user cache.
+ * Sanitizes bulk input, skips usernames the user already has, and inserts the rest in batches.
  */
 export const massUploadProfiles = async (usernamesString, userId) => {
     if (!userId) throw new Error('Unauthorized: userId is required.');
 
-    // 1. Split string by newlines, trim, and remove internal duplicates
+    // 1. Split string by newlines, trim, and remove internal duplicates (case-insensitive)
     const rawNames = (typeof usernamesString === 'string' ? usernamesString.split('\n') : usernamesString)
         .map(name => name.trim())
         .filter(Boolean);
-    const uniqueInputNames = [...new Set(rawNames)];
 
-    // 2. Fast filter using our in-memory Bloom Filter before hitting Firestore
-    const newNames = uniqueInputNames.filter(name => !bloomFilterService.has(`${userId}_${name.toLowerCase()}`));
+    const uniqueByNormalized = new Map();
+    for (const name of rawNames) {
+        const key = name.toLowerCase();
+        if (!uniqueByNormalized.has(key)) uniqueByNormalized.set(key, name);
+    }
+
+    // 2. Ask Firestore which of these this user already has (cheap `in` queries)
+    const existing = await findExistingNormalizedNames([...uniqueByNormalized.keys()], userId);
+    const newNames = [...uniqueByNormalized.entries()].filter(([key]) => !existing.has(key));
 
     // 3. Chunk inserts into batches (Firestore limit is 500 per batch)
     const addedProfiles = [];
@@ -151,9 +214,8 @@ export const massUploadProfiles = async (usernamesString, userId) => {
     let operationCount = 0;
     const batchPromises = [];
 
-    for (const username of newNames) {
-        const normalizedUsername = username.toLowerCase();
-        const docRef = profilesCollection.doc(); 
+    for (const [normalizedUsername, username] of newNames) {
+        const docRef = profilesCollection.doc();
 
         const profileData = {
             userId,
@@ -168,7 +230,6 @@ export const massUploadProfiles = async (usernamesString, userId) => {
         currentBatch.set(docRef, profileData);
         addedProfiles.push({ id: docRef.id, ...profileData });
 
-        // Update Bloom Filter immediately
         bloomFilterService.add(`${userId}_${normalizedUsername}`);
 
         operationCount++;
@@ -196,10 +257,11 @@ export const massUploadProfiles = async (usernamesString, userId) => {
     };
 };
 
+// Uses an aggregation query: billed roughly 1 read per 1,000 matching docs instead of 1 per doc.
 export const getGlobalProfileCount = async (userId) => {
     if (!userId) return 0;
-    const snapshot = await profilesCollection.where('userId', '==', userId).get();
-    return snapshot.size;
+    const snapshot = await profilesCollection.where('userId', '==', userId).count().get();
+    return snapshot.data().count;
 };
 
 /**
@@ -222,8 +284,8 @@ export const refreshVideos = async (ids, force = false, userId) => {
 
     await Promise.all(batchPromises);
 
-    return { 
-        success: true, 
-        message: `Processed video refresh for selected profiles.` 
+    return {
+        success: true,
+        message: `Processed video refresh for selected profiles.`
     };
 };

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import api from '../services/api';
 
 // --- Inline SVGs (No Emojis) ---
 const XIcon = () => (
@@ -25,7 +26,7 @@ const CheckIcon = () => (
 export default function MassUploadModal({ isOpen, onClose, onUploadComplete }) {
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState(null);
+  const [result, setResult] = useState(null); // { type: 'success' | 'error', message }
 
   if (!isOpen) return null;
 
@@ -35,26 +36,26 @@ export default function MassUploadModal({ isOpen, onClose, onUploadComplete }) {
     setResult(null);
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/profiles/mass-upload`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({ usernames: text })
+      // Shared axios instance: attaches the token, refreshes it on 401/403, and throws on 4xx/5xx
+      // (the old fetch call treated a 500/503 as success and printed "Processed undefined").
+      const { data } = await api.post('/profiles/mass-upload', { usernames: text });
+
+      setResult({
+        type: 'success',
+        message: `Processed ${data.totalSubmitted}. Added: ${data.added}, Skipped (Duplicates): ${data.skipped}`
       });
-      
-      const data = await response.json();
-      setResult(`Processed ${data.totalSubmitted}. Added: ${data.added}, Skipped (Duplicates): ${data.skipped}`);
-      
+
       if (data.newProfiles && data.newProfiles.length > 0) {
         onUploadComplete(data.newProfiles);
       }
-      
+
       setText('');
     } catch (error) {
       console.error("Mass upload failed:", error);
-      setResult("Upload failed. Check the console.");
+      setResult({
+        type: 'error',
+        message: error.response?.data?.error || "Upload failed. Check the console."
+      });
     } finally {
       setLoading(false);
     }
@@ -69,27 +70,28 @@ export default function MassUploadModal({ isOpen, onClose, onUploadComplete }) {
   return (
     <div className="modal-overlay" onClick={handleClose}>
       <div className="mass-modal-container glass-panel" onClick={(e) => e.stopPropagation()}>
-        
+
         {/* Header */}
         <div className="mass-modal-header">
           <h2 className="mass-modal-title">
             <UploadCloudIcon /> Mass Upload Profiles
           </h2>
-          <button 
+          <button
             onClick={handleClose}
             className="mass-modal-close-btn"
+            aria-label="Close"
           >
             <XIcon />
           </button>
         </div>
-        
+
         {/* Body */}
         <div className="mass-modal-body">
           <p className="mass-modal-desc">
-            Paste a list of usernames separated by a new line. Duplicates will be automatically ignored using our high-speed cache.
+            Paste a list of usernames separated by a new line. Usernames you already have are skipped automatically.
           </p>
-          
-          <textarea 
+
+          <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder="user1&#10;user2&#10;user3"
@@ -98,21 +100,21 @@ export default function MassUploadModal({ isOpen, onClose, onUploadComplete }) {
           />
 
           {result && (
-            <div className="mass-modal-result-box">
-              {result}
+            <div className={`mass-modal-result-box${result.type === 'error' ? ' is-error' : ''}`}>
+              {result.message}
             </div>
           )}
         </div>
 
         {/* Footer Actions */}
         <div className="mass-modal-footer">
-          <button 
+          <button
             onClick={handleClose}
             className="mass-modal-cancel-btn"
           >
             Close
           </button>
-          <button 
+          <button
             onClick={handleUpload}
             disabled={loading || !text.trim()}
             className="mass-modal-submit-btn"

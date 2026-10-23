@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <!-- Updated to use the correct custom favicon -->
@@ -7,9 +7,41 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CreatorLens</title>
 
+    <!-- Apply the saved theme before first paint so there is no dark/light flash.
+         Same storage key and values as useTheme() in src/App.jsx. -->
+    <script>
+      (function () {
+        var theme = "dark";
+        try {
+          if (localStorage.getItem("creatorlens-theme") === "light") theme = "light";
+        } catch (e) {}
+        document.documentElement.setAttribute("data-theme", theme);
+      })();
+    </script>
+    <style>
+      html { background: #1e1e1e; }
+      html[data-theme="light"] { background: #ffffff; }
+    </style>
+
     <!-- Google OAuth Script & Cross-Origin Policy -->
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+    <!-- Fonts: preconnect + non-blocking stylesheet (replaces the @import that used to sit in App.css) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+      media="print"
+      onload="this.media='all'"
+    />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+      />
+    </noscript>
   </head>
   <body>
     <div id="root"></div>
