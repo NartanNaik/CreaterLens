@@ -33,7 +33,7 @@ export default function ManageCategoryModal({ isOpen, onClose, column, onDelete 
       setConfirming(true);
       return;
     }
-    
+
     onDelete(column);
     setConfirming(false);
     onClose();
@@ -47,15 +47,16 @@ export default function ManageCategoryModal({ isOpen, onClose, column, onDelete 
   return (
     <div className="modal-overlay" onClick={handleCancel}>
       <div className="manage-modal-container glass-panel" onClick={(e) => e.stopPropagation()}>
-        
+
         {/* Header */}
         <div className="manage-modal-header">
           <h2 className="manage-modal-title">
             <SettingsIcon /> Manage Category
           </h2>
-          <button 
+          <button
             onClick={handleCancel}
             className="manage-modal-close-btn"
+            aria-label="Close"
           >
             <XIcon />
           </button>
@@ -65,7 +66,7 @@ export default function ManageCategoryModal({ isOpen, onClose, column, onDelete 
         <div className="manage-modal-body">
           <div className="manage-column-card">
             <p className="manage-column-text">
-              <strong className="manage-column-name">{column.displayName}</strong> 
+              <strong className="manage-column-name">{column.displayName}</strong>
               <span className="manage-type-badge">
                 {column.inputType}
               </span>
@@ -83,21 +84,21 @@ export default function ManageCategoryModal({ isOpen, onClose, column, onDelete 
 
           {confirming && (
             <div className="manage-confirm-box">
-              Are you sure? This will remove the column <strong className="manage-highlight-name">"{column.displayName}"</strong> for everyone. Click delete again to confirm.
+              Are you sure? This removes the column <strong className="manage-highlight-name">"{column.displayName}"</strong> from your table (values already saved on profiles are kept). Click delete again to confirm.
             </div>
           )}
         </div>
 
         {/* Footer Actions */}
         <div className="manage-modal-footer">
-          <button 
+          <button
             onClick={handleDelete}
             className={`manage-delete-btn ${confirming ? 'confirming' : ''}`}
           >
             <TrashIcon /> {confirming ? "Confirm Delete" : "Delete Category"}
           </button>
-          
-          <button 
+
+          <button
             onClick={handleCancel}
             className="manage-cancel-btn"
           >

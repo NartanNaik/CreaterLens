@@ -6,6 +6,7 @@ import ProfileDashboard from "./components/ProfileDashboard";
 import StagingQueue from "./components/StagingQueue";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { Toaster } from "react-hot-toast";
+import { clearSession } from "./utils/session";
 import "./App.css";
 
 const SPLASH_MS = 1800;      // total time the splash stays on screen
@@ -96,7 +97,18 @@ const LinkedInIcon = () => (
   </svg>
 );
 
+const MailIcon = () => (
+  <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+    <polyline points="22,6 12,13 2,6"></polyline>
+  </svg>
+);
+
+const CONTACT_EMAIL = "naiknartana@gmail.com";
+
 const CONTACT_LINKS = [
+  // Opens Gmail's compose window with "To" already filled in
+  { label: "Email", href: `https://mail.google.com/mail/?view=cm&fs=1&to=${CONTACT_EMAIL}`, Icon: MailIcon },
   { label: "GitHub", href: "https://github.com/NartanNaik", Icon: GitHubIcon },
   { label: "LinkedIn", href: "https://www.linkedin.com/in/nartan-naik-90499a359/", Icon: LinkedInIcon }
 ];
@@ -214,10 +226,7 @@ function GlobalLayout({ theme, onToggleTheme }) {
   }, [location.pathname]);
 
   const handleLogout = () => {
-    try {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-    } catch { /* ignore */ }
+    clearSession(); // token, user, per-account column settings and every in-memory cache
     navigate('/login', { replace: true });
   };
 

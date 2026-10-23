@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { GoogleLogin } from "@react-oauth/google";
 import axios from "axios";
+import { startSession } from "../utils/session";
 
 const API_URL = import.meta.env.VITE_API_URL || "";
 
@@ -52,10 +53,8 @@ function Login({ theme = "dark" }) {
       }
 
       // Store the internal JWT and user profile
-      localStorage.setItem("token", accessToken);
-      if (data.user) {
-        localStorage.setItem("user", JSON.stringify(data.user));
-      }
+      // startSession wipes the previous account's cached data first
+      startSession(accessToken, data.user);
 
       navigate("/dashboard", { replace: true });
     } catch (error) {

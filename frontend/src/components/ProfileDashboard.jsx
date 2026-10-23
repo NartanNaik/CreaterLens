@@ -11,6 +11,7 @@ import DragFillOverlay from './DragFillOverlay';
 import useDragFill from '../hooks/useDragFill';
 import api from '../services/api';
 import { withCoreColumns, isCoreColumn, readStorage } from '../utils/tableColumns';
+import { registerSessionReset, getSessionEpoch } from '../utils/session';
 
 // --- Clean SVG Icons ---
 const SearchIcon = () => (
@@ -93,6 +94,13 @@ let globalProfilesCache = null;
 let globalColumnsCache = null;
 let globalLastFetchTime = 0;
 const CACHE_DURATION_MS = 5 * 60 * 1000;
+
+// Logging out / signing in as someone else must never reuse the previous account's data.
+registerSessionReset(() => {
+  globalProfilesCache = null;
+  globalColumnsCache = null;
+  globalLastFetchTime = 0;
+});
 
 // Resolves to the response body; throws an Error carrying the server's message.
 const request = async (path, { method = 'GET', data } = {}) => {
@@ -229,12 +237,16 @@ export default function ProfileDashboard() {
     }
 
     setFetching(true);
+    const epochAtStart = getSessionEpoch();
 
     // allSettled: a failing /settings/columns must not blank the whole table.
     const [profilesRes, columnsRes] = await Promise.allSettled([
       request('/profiles'),
       request('/settings/columns')
     ]);
+
+    // The account changed while the request was in flight: drop this result.
+    if (epochAtStart !== getSessionEpoch()) return;
 
     let bothOk = true;
 
@@ -562,14 +574,6 @@ export default function ProfileDashboard() {
         <div className="toolbar-actions">
           <button onClick={forceRefreshData} className="action-btn">
             <RefreshIcon /> Refresh Data
-          </button>
-
-          <button onClick={handleCopyAll} className="action-btn">
-            <CopyIcon /> Copy All Usernames
-          </button>
-
-          <button onClick={handleDeleteAll} disabled={deleting} className="action-btn btn-danger">
-            <TrashIcon /> {deleting ? "Deleting..." : "Delete All"}
           </button>
 
           <div className="toolbar-divider"></div>

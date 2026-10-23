@@ -1,73 +1,77 @@
 import { OAuth2Client } from "google-auth-library";
-import { FieldPath } from "firebase-admin/firestore";
 import { db } from "../config/firebase.js";
 import { encryptKey } from "../services/encryptionService.js";
 import jwt from "jsonwebtoken";
 
-// GOOGLE_CLIENT_ID may hold one Web client ID, or several separated by commas.
-// The Flutter app must use the Web client ID as serverClientId so the token audience matches.
-const GOOGLE_AUDIENCES = (process.env.GOOGLE_CLIENT_ID || "")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
-const client = new OAuth2Client(GOOGLE_AUDIENCES[0]);
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const OWNER_EMAIL = "naiknartana@gmail.com";
 
-const isQuotaError = (err) =>
-  err?.code === 8 || /RESOURCE_EXHAUSTED/i.test(String(err?.message || ""));
+// An expired session token can still be silently refreshed for this long.
+// After that the user has to sign in with Google again.
+const REFRESH_WINDOW_SECONDS = 30 * 24 * 60 * 60;
+
+// Firestore out-of-quota is gRPC code 8 (RESOURCE_EXHAUSTED).
+const isQuotaError = (err) => err?.code === 8 || /RESOURCE_EXHAUSTED|quota/i.test(err?.message || "");
+
+// Only an explicit `false` means "not done yet": accounts created before the setup page
+// existed have no flags and must not be pushed through it.
+// (Same rule as readOnboarding in settingsController.js.)
+const readOnboarding = (data) => ({
+  onboardingDone: data?.onboardingDone !== false,
+  tourDone: data?.tourDone !== false
+});
 
 /**
- * One-time legacy data claim for the owner account.
- * Pages through each collection (400 docs at a time, only the needed fields)
- * instead of loading a whole collection into memory.
- * Returns true only if every collection was processed, so the caller
- * sets legacyMigrated only after a full success and never re-scans afterwards.
+ * Production Data Healer: Ensures all legacy unowned documents
+ * are strictly assigned to the master account and have the required
+ * index fields (like createdAt) so Firestore doesn't hide them.
+ *
+ * Returns true only if every collection was processed. The caller marks the
+ * owner as migrated only on true, so a failure (e.g. quota exhausted mid-run)
+ * is retried on the next login instead of being silently skipped forever.
  */
-const PAGE_SIZE = 400;
-
 const claimLegacyDataForOwner = async (ownerUserId) => {
   const collectionsToMigrate = ["profiles", "staging", "users_settings"];
   let allOk = true;
 
   for (const colName of collectionsToMigrate) {
     try {
-      let last = null;
+      const snapshot = await db.collection(colName).get();
+      let batch = db.batch();
+      let count = 0;
 
-      for (;;) {
-        let q = db
-          .collection(colName)
-          .orderBy(FieldPath.documentId())
-          .select("userId", "createdAt", "timestamp", "dateAdded")
-          .limit(PAGE_SIZE);
-        if (last) q = q.startAfter(last);
+      for (const doc of snapshot.docs) {
+        const data = doc.data();
+        const updates = {};
 
-        const snapshot = await q.get();
-        if (snapshot.empty) break;
-
-        const batch = db.batch();
-        let pending = 0;
-
-        for (const doc of snapshot.docs) {
-          const data = doc.data();
-          const updates = {};
-
-          if (!data.userId || data.userId === "admin" || data.userId === "test") {
-            updates.userId = ownerUserId;
-          }
-          if (!data.createdAt) {
-            updates.createdAt = data.timestamp || data.dateAdded || new Date().toISOString();
-          }
-
-          if (Object.keys(updates).length > 0) {
-            batch.update(doc.ref, updates);
-            pending++;
-          }
+        // 1. Claim unowned or dummy data
+        if (!data.userId || data.userId === "admin" || data.userId === "test") {
+          updates.userId = ownerUserId;
         }
 
-        if (pending > 0) await batch.commit();
+        // 2. Add missing createdAt field (kept for older documents)
+        if (!data.createdAt) {
+          // Preserve existing timestamps if they used a different key, otherwise use now
+          updates.createdAt = data.timestamp || data.dateAdded || new Date().toISOString();
+        }
 
-        last = snapshot.docs[snapshot.docs.length - 1];
-        if (snapshot.size < PAGE_SIZE) break;
+        // If this document needs healing, add it to the batch
+        if (Object.keys(updates).length > 0) {
+          batch.update(doc.ref, updates);
+          count++;
+
+          // Commit in chunks of 490 (Firestore limit is 500 per batch)
+          if (count === 490) {
+            await batch.commit();
+            batch = db.batch();
+            count = 0;
+          }
+        }
+      }
+
+      // Commit any remaining updates in the final batch
+      if (count > 0) {
+        await batch.commit();
       }
     } catch (err) {
       allOk = false;
@@ -121,59 +125,49 @@ const createOpenRouterUserKey = async (email) => {
   return encryptKey(rawApiKey);
 };
 
-/**
- * Key provisioning must never block sign-in. If it fails, the user still logs in
- * and the self-heal branch below retries on the next login.
- */
-const tryCreateOpenRouterUserKey = async (email) => {
-  try {
-    return await createOpenRouterUserKey(email);
-  } catch (err) {
-    console.error("OpenRouter key provisioning failed (will retry next login):", err.message);
-    return null;
-  }
-};
-
 export const googleLogin = async (req, res) => {
-  // Step 1 failures are auth errors (401). Everything after is a server-side problem.
+  const { token } = req.body || {};
+
+  if (!token) {
+    return res.status(400).json({
+      success: false,
+      error: "Google token is required."
+    });
+  }
+
+  // 1. Verify the Google token. Only a failure HERE is a 401 (bad/expired/foreign token).
   let payload;
   try {
-    const { token } = req.body || {};
-
-    if (!token) {
-      return res.status(400).json({
-        success: false,
-        error: "Google token is required."
-      });
-    }
-
     const ticket = await client.verifyIdToken({
       idToken: token,
-      audience: GOOGLE_AUDIENCES.length > 1 ? GOOGLE_AUDIENCES : GOOGLE_AUDIENCES[0],
+      audience: process.env.GOOGLE_CLIENT_ID,
     });
     payload = ticket.getPayload();
   } catch (error) {
-    console.error("Google token verification failed:", error.message);
+    console.error("Google token verification failed:", error?.message || error);
     return res.status(401).json({
       success: false,
-      error: "Google sign-in could not be verified."
+      error: "Google sign-in could not be verified. Please try again."
     });
   }
 
+  // 2. Everything after verification is our own backend: Firestore, OpenRouter, JWT.
+  //    Those failures are 503/500, not "your login is wrong", and never leak raw internals.
   try {
     const userId = payload.sub; // Google's immutable unique ID for this user
     const email = (payload.email || "").toLowerCase().trim();
 
-    // 2. Fetch user + settings in a single round trip
     const userRef = db.collection("users").doc(userId);
-    const settingsRef = db.collection("users_settings").doc(userId);
-    const [userDoc, settingsDoc] = await db.getAll(userRef, settingsRef);
-    const isNewUser = !userDoc.exists;
+    const userDoc = await userRef.get();
 
-    // 3. Default columns + onboarding flags for new (or uninitialised) users.
-    // Username and Link are core (isCustom: false). Nation is deletable (isCustom: true).
-    if (!settingsDoc.exists) {
-      await settingsRef.set({
+    const settingsRef = db.collection("users_settings").doc(userId);
+    const settingsDoc = await settingsRef.get();
+
+    // Initialize default columns (and the setup/tour flags) for NEW users.
+    // Username and Link are core (isCustom: false). Nation is dynamic/deletable (isCustom: true).
+    let settingsData = settingsDoc.exists ? settingsDoc.data() : null;
+    if (!settingsData) {
+      settingsData = {
         userId,
         columns: [
           { columnId: "username", displayName: "Username", inputType: "text", isCustom: false },
@@ -183,62 +177,46 @@ export const googleLogin = async (req, res) => {
         onboardingDone: false,
         tourDone: false,
         createdAt: new Date().toISOString()
-      });
-    } else {
-      // Backfill the flags once. Brand-new accounts get the setup page and tour;
-      // accounts that already existed are treated as done.
-      const s = settingsDoc.data() || {};
-      const backfill = {};
-      if (typeof s.onboardingDone !== "boolean") backfill.onboardingDone = !isNewUser;
-      if (typeof s.tourDone !== "boolean") backfill.tourDone = !isNewUser;
-      if (Object.keys(backfill).length > 0) {
-        await settingsRef.set(backfill, { merge: true });
-      }
+      };
+      await settingsRef.set(settingsData);
     }
 
-    // 4. Account creation and key generation
-    if (isNewUser) {
-      const encryptedOrKey = await tryCreateOpenRouterUserKey(email);
-      const isOwner = email === OWNER_EMAIL;
+    // User account creation & key generation
+    let userData;
+    if (!userDoc.exists) {
+      // NEW USER: Spawn a $0 limit OpenRouter Key
+      const encryptedOrKey = await createOpenRouterUserKey(email);
 
-      await userRef.set({
+      userData = {
         email,
         name: payload.name || "",
         picture: payload.picture || "",
-        role: isOwner ? "owner" : "user",
-        encryptedOrKey: encryptedOrKey || null,
+        role: email === OWNER_EMAIL ? "owner" : "user",
+        encryptedOrKey,
         legacyMigrated: false,
         createdAt: new Date().toISOString()
-      });
-
-      if (isOwner) {
-        const ok = await claimLegacyDataForOwner(userId);
-        if (ok) await userRef.update({ legacyMigrated: true });
-      } else {
-        await userRef.update({ legacyMigrated: true }); // nothing to migrate for normal users
-      }
+      };
+      await userRef.set(userData);
     } else {
-      const existingData = userDoc.data() || {};
-      const updates = {};
+      userData = userDoc.data() || {};
 
-      // Self-heal: user doc exists without an OpenRouter key
-      if (!existingData.encryptedOrKey) {
-        const encryptedOrKey = await tryCreateOpenRouterUserKey(email);
-        if (encryptedOrKey) updates.encryptedOrKey = encryptedOrKey;
-      }
-
-      // Owner legacy data is claimed once, and the flag is set only after full success
-      if (email === OWNER_EMAIL && !existingData.legacyMigrated) {
-        const ok = await claimLegacyDataForOwner(userId);
-        if (ok) updates.legacyMigrated = true;
-      }
-
-      if (Object.keys(updates).length > 0) {
-        await userRef.update(updates);
+      // Self-heal: If user doc exists without an OpenRouter key, generate it now
+      if (!userData.encryptedOrKey) {
+        const encryptedOrKey = await createOpenRouterUserKey(email);
+        await userRef.update({ encryptedOrKey });
+        userData = { ...userData, encryptedOrKey };
       }
     }
 
-    // 5. Internal JWT for session persistence (web and Flutter)
+    // Owner only: claim legacy unowned data once. Marked done only if it fully succeeded.
+    if (email === OWNER_EMAIL && !userData.legacyMigrated) {
+      const migrated = await claimLegacyDataForOwner(userId);
+      if (migrated) {
+        await userRef.update({ legacyMigrated: true });
+      }
+    }
+
+    // Generate internal JWT for frontend session persistence
     const sessionToken = jwt.sign(
       { id: userId, email },
       process.env.JWT_SECRET,
@@ -251,27 +229,30 @@ export const googleLogin = async (req, res) => {
       user: {
         id: userId,
         name: payload.name,
-        email
+        email,
+        ...readOnboarding(settingsData)
       }
     });
   } catch (error) {
-    console.error("Google Auth Error:", error);
+    console.error("Google Auth Error:", error?.stack || error);
+
     if (isQuotaError(error)) {
       return res.status(503).json({
         success: false,
         code: "QUOTA_EXCEEDED",
-        error: "Database quota exceeded. Please try again later."
+        error: "The server's database quota is used up for now. Please try again later."
       });
     }
+
     return res.status(500).json({
       success: false,
-      error: "Sign-in failed. Please try again."
+      error: "Sign-in failed on the server. Please try again."
     });
   }
 };
 
 /**
- * Token refresh: accepts an expired token, issues a fresh 7-day one.
+ * Handle token refresh requests if your frontend relies on a refresh cycle
  */
 export const refreshTokenController = async (req, res) => {
   try {
@@ -289,6 +270,13 @@ export const refreshTokenController = async (req, res) => {
       throw new Error("Invalid token payload");
     }
 
+    // An old/leaked token must not be refreshable forever
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    if (decoded.exp && nowSeconds - decoded.exp > REFRESH_WINDOW_SECONDS) {
+      throw new Error("Session is too old to refresh");
+    }
+
+    // Issue a fresh token
     const newToken = jwt.sign(
       { id: decoded.id, email: decoded.email },
       process.env.JWT_SECRET,
@@ -300,7 +288,7 @@ export const refreshTokenController = async (req, res) => {
       token: newToken
     });
   } catch (error) {
-    console.error("Token refresh failed:", error.message);
+    console.error("Token refresh failed:", error?.message || error);
     return res.status(403).json({
       success: false,
       error: "Invalid or expired session."

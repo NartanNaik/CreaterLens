@@ -3,6 +3,7 @@ import { toast } from 'react-hot-toast';
 import api from '../services/api';
 import GarbageEater from './GarbageEater';
 import { withCoreColumns, isCoreColumn, readStorage, writeStorage } from '../utils/tableColumns';
+import { registerSessionReset, getSessionEpoch } from '../utils/session';
 
 // --- Clean SVG Icons ---
 const ExternalLinkIcon = () => (
@@ -69,6 +70,13 @@ let globalStagingCache = null;
 let globalStagingLastFetchTime = 0;
 let globalColumnsCache = null;
 const CACHE_DURATION_MS = 5 * 60 * 1000;
+
+// Logging out / signing in as someone else must never reuse the previous account's data.
+registerSessionReset(() => {
+  globalStagingCache = null;
+  globalColumnsCache = null;
+  globalStagingLastFetchTime = 0;
+});
 
 const toArray = (res) => (Array.isArray(res.data) ? res.data : res.data?.data || []);
 
@@ -149,12 +157,16 @@ export default function StagingQueue() {
     }
 
     if (showLoader) setLoading(true);
+    const epochAtStart = getSessionEpoch();
 
     // allSettled: a failing /settings/columns must not hide the queue (and vice versa).
     const [stagingRes, columnsRes] = await Promise.allSettled([
       api.get('/staging'),
       api.get('/settings/columns')
     ]);
+
+    // The account changed while the request was in flight: drop this result.
+    if (epochAtStart !== getSessionEpoch()) return;
 
     let bothOk = true;
 
