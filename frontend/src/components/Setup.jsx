@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
-import { APK_URL, APK_READY, EXTENSION_URL } from '../config/links';
+import { APK_URL, APK_READY, EXTENSION_URL } from '../../config/links';
 
 const PencilIcon = () => (
   <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
