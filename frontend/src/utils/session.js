@@ -39,3 +39,27 @@ export const startSession = (token, user) => {
     console.error('Could not store session:', e);
   }
 };
+
+// ---- Signed-in user (stored by startSession) ----
+export const getStoredUser = () => {
+  try {
+    return JSON.parse(localStorage.getItem('user') || 'null');
+  } catch {
+    return null;
+  }
+};
+
+// Merge a few fields into the stored user (for example { tourDone: true }).
+export const patchStoredUser = (patch) => {
+  try {
+    const next = { ...(getStoredUser() || {}), ...patch };
+    localStorage.setItem('user', JSON.stringify(next));
+  } catch { /* ignore */ }
+};
+
+// "Nartan Maruti Naik" -> "Nartan"; falls back to the part of the email before "@".
+export const getFirstName = (user) => {
+  const fromName = String(user?.name || '').trim().split(/\s+/)[0];
+  if (fromName) return fromName;
+  return String(user?.email || '').split('@')[0] || '';
+};

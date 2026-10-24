@@ -6,7 +6,9 @@ import ProfileDashboard from "./components/ProfileDashboard";
 import StagingQueue from "./components/StagingQueue";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { Toaster } from "react-hot-toast";
-import { clearSession } from "./utils/session";
+import Setup from "./components/Setup";
+import Tour from "./components/Tour";
+import { clearSession, getStoredUser, patchStoredUser, getFirstName } from "./utils/session";
 import "./App.css";
 
 const SPLASH_MS = 1800;      // total time the splash stays on screen
@@ -166,6 +168,113 @@ function ContactMenu() {
   );
 }
 
+// --- Small shared hook for dropdowns: closes on outside click or Escape ---
+function useMenu() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return { open, setOpen, ref };
+}
+
+const HelpIcon = () => (
+  <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10"></circle>
+    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+  </svg>
+);
+
+const CompassIcon = () => (
+  <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10"></circle>
+    <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon>
+  </svg>
+);
+
+const ListIcon = () => (
+  <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="8" y1="6" x2="21" y2="6"></line>
+    <line x1="8" y1="12" x2="21" y2="12"></line>
+    <line x1="8" y1="18" x2="21" y2="18"></line>
+    <line x1="3" y1="6" x2="3.01" y2="6"></line>
+    <line x1="3" y1="12" x2="3.01" y2="12"></line>
+    <line x1="3" y1="18" x2="3.01" y2="18"></line>
+  </svg>
+);
+
+const LogOutIcon = () => (
+  <svg className="svg-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+    <polyline points="16 17 21 12 16 7"></polyline>
+    <line x1="21" y1="12" x2="9" y2="12"></line>
+  </svg>
+);
+
+// --- Guide menu: reopen the setup page or the product tour at any time ---
+function GuideMenu({ onSetup, onTour }) {
+  const { open, setOpen, ref } = useMenu();
+
+  return (
+    <div className="dropdown-container" ref={ref} data-tour="guide">
+      <button type="button" className="action-btn" onClick={() => setOpen((v) => !v)} aria-haspopup="menu" aria-expanded={open}>
+        <HelpIcon /> Guide
+      </button>
+      <div className={`dropdown-menu${open ? " show" : ""}`} role="menu">
+        <button type="button" className="dropdown-item" role="menuitem" onClick={() => { setOpen(false); onSetup(); }}>
+          <ListIcon /> Setup guide
+        </button>
+        <button type="button" className="dropdown-item" role="menuitem" onClick={() => { setOpen(false); onTour(); }}>
+          <CompassIcon /> Product tour
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// --- Profile avatar: the first letter of the signed-in user's first name ---
+function UserMenu({ user, onLogout }) {
+  const { open, setOpen, ref } = useMenu();
+  const firstName = getFirstName(user);
+  const letter = (firstName.charAt(0) || "?").toUpperCase();
+
+  return (
+    <div className="dropdown-container" ref={ref}>
+      <button
+        type="button"
+        className="avatar-btn"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`Account: ${user?.email || firstName}`}
+        title={user?.email || firstName}
+      >
+        {letter}
+      </button>
+      <div className={`dropdown-menu${open ? " show" : ""}`} role="menu">
+        <div className="user-menu-info">
+          <span className="user-menu-name">{user?.name || firstName || "Signed in"}</span>
+          {user?.email && <span className="user-menu-email">{user.email}</span>}
+        </div>
+        <button type="button" className="dropdown-item" role="menuitem" onClick={() => { setOpen(false); onLogout(); }}>
+          <LogOutIcon /> Log out
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // --- Big animated logo behind the whole app (like VS Code's empty-editor watermark) ---
 const BackgroundLogo = () => (
   <div className="bg-watermark" aria-hidden="true">
@@ -206,6 +315,51 @@ function GlobalLayout({ theme, onToggleTheme }) {
   const [globalCount, setGlobalCount] = useState(0);
   const location = useLocation();
   const navigate = useNavigate();
+  const [tourOpen, setTourOpen] = useState(false);
+  const pathRef = useRef(location.pathname);
+  pathRef.current = location.pathname;
+  const user = getStoredUser();
+
+  const saveFlags = useCallback((flags) => {
+    patchStoredUser(flags);
+    api.put('/settings/onboarding', flags).catch(() => { /* flags are a convenience, never block the user */ });
+  }, []);
+
+  // "Done" / "Skip" on the setup page: remember it, go to the dashboard and start the tour
+  const finishSetup = useCallback(() => {
+    saveFlags({ onboardingDone: true });
+    navigate('/dashboard', { state: { startTour: true } });
+  }, [navigate, saveFlags]);
+
+  const closeTour = useCallback(() => {
+    setTourOpen(false);
+    saveFlags({ tourDone: true });
+  }, [saveFlags]);
+
+  // Opened by finishSetup (route state) or by the Guide menu
+  useEffect(() => {
+    if (location.state?.startTour) {
+      setTourOpen(true);
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [location.state, location.pathname, navigate]);
+
+  const handleStepChange = useCallback((step) => {
+    if (step.route && pathRef.current !== step.route) navigate(step.route);
+  }, [navigate]);
+
+  const tourSteps = useMemo(() => [
+    { id: 'welcome', route: '/dashboard', title: 'Welcome to CreatorLens', text: 'A quick tour of the places you will use most. Use the arrow keys or the buttons. You can skip any time.' },
+    { id: 'count', route: '/dashboard', selector: '.count-pill', title: 'Your total', text: 'How many creators are saved in your dashboard right now.' },
+    { id: 'dashboard', route: '/dashboard', selector: 'a[href="/dashboard"]', title: 'Dashboard', text: 'Your approved creators live here, as a table you can search, sort and edit.' },
+    { id: 'search', route: '/dashboard', selector: '.dashboard-container .search-input', title: 'Search and check', text: 'Type a username to find a creator, or to check whether you already have them before adding.' },
+    { id: 'actions', route: '/dashboard', selector: '.dashboard-toolbar .dropdown-container', title: 'Actions', text: 'Add your own columns, mass upload usernames, copy every username, or delete all.' },
+    { id: 'table', route: '/dashboard', selector: '.table-wrapper', title: 'Your table', text: 'Click a cell to edit it. Right-click a column header to hide or rename it.' },
+    { id: 'staging', route: '/staging', selector: 'a[href="/staging"]', title: 'Staging Queue', text: 'New creators wait here for your review before they reach the dashboard.' },
+    { id: 'garbage', route: '/staging', selector: '.garbage-panel', title: 'JSON Garbage Eater', text: 'Paste a saved-posts export here and everything is queued at once.' },
+    { id: 'review', route: '/staging', selector: '.table-wrapper', isNew: true, title: 'Review the queue', text: 'Scan runs the AI on a row, Approve sends it to the dashboard, Reject removes it. Approve All and Reject All sit at the top.' },
+    { id: 'guide', route: '/staging', selector: '[data-tour="guide"]', title: 'Need this again?', text: 'The Guide menu reopens this tour and the setup page whenever you like.' }
+  ], []);
 
   useEffect(() => {
     let cancelled = false;
@@ -231,7 +385,7 @@ function GlobalLayout({ theme, onToggleTheme }) {
   };
 
   // Stable context object: children that depend on updateGlobalCount no longer re-run every render.
-  const outletContext = useMemo(() => ({ updateGlobalCount: setGlobalCount }), []);
+  const outletContext = useMemo(() => ({ updateGlobalCount: setGlobalCount, finishSetup }), [finishSetup]);
 
   const navClass = ({ isActive }) => `nav-link${isActive ? ' active' : ''}`;
 
@@ -256,16 +410,16 @@ function GlobalLayout({ theme, onToggleTheme }) {
             </svg>
             <span>Total IDs: {globalCount.toLocaleString()}</span>
           </div>
+          <GuideMenu onSetup={() => navigate('/setup')} onTour={() => setTourOpen(true)} />
           <ContactMenu />
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
-          <button onClick={handleLogout} className="action-btn">
-            Log out
-          </button>
+          <UserMenu user={user} onLogout={handleLogout} />
         </div>
       </header>
       <main className="app-main">
         <Outlet context={outletContext} />
       </main>
+      {tourOpen && <Tour steps={tourSteps} onClose={closeTour} onStepChange={handleStepChange} />}
     </div>
   );
 }
@@ -295,6 +449,7 @@ function App() {
             >
               <Route path="/dashboard" element={<ProfileDashboard />} />
               <Route path="/staging" element={<StagingQueue />} />
+              <Route path="/setup" element={<Setup />} />
             </Route>
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>

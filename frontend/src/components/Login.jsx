@@ -56,7 +56,9 @@ function Login({ theme = "dark" }) {
       // startSession wipes the previous account's cached data first
       startSession(accessToken, data.user);
 
-      navigate("/dashboard", { replace: true });
+      // Brand-new accounts start on the setup page; everyone else goes straight to the dashboard
+      const needsSetup = data.user && data.user.onboardingDone === false;
+      navigate(needsSetup ? "/setup" : "/dashboard", { replace: true });
     } catch (error) {
       console.error("Google Sign-In Error:", error);
       if (error.response) {
