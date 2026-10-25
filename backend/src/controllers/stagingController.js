@@ -407,19 +407,17 @@ export const processStagingItemController = async (req, res) => {
 
     // ---------- STEP 1: scrape ----------
     if (step === "scrape") {
-      // The scraper (RapidAPI) is optional. Without a key, or if it fails, the AI still gets what the
-      // import already saved for this item (caption, thumbnail, owner) instead of the item being marked failed.
+      // The scraper works without a paid key (it falls back to Instagram's public embed page). If it
+      // still finds nothing, the AI gets what the import already saved (caption, thumbnail, owner).
       let richMedia = {};
-      if (process.env.RAPIDAPI_KEY) {
-        try {
-          richMedia = (await scraperService.fetchFullReelMedia(itemData.url, itemData.username)) || {};
-        } catch (scrapeError) {
-          if (isRateLimitError(scrapeError)) {
-            return res.status(429).json({ success: false, error: "Scraper is rate limited. Retrying shortly." });
-          }
-          console.warn(`[Scraper] Failed for ${itemData.username}, using saved data instead: ${scrapeError?.message || scrapeError}`);
-          richMedia = {};
+      try {
+        richMedia = (await scraperService.fetchFullReelMedia(itemData.url, itemData.username)) || {};
+      } catch (scrapeError) {
+        if (isRateLimitError(scrapeError)) {
+          return res.status(429).json({ success: false, error: "Scraper is rate limited. Retrying shortly." });
         }
+        console.warn(`[Scraper] Failed for ${itemData.username}, using saved data instead: ${scrapeError?.message || scrapeError}`);
+        richMedia = {};
       }
 
       await docRef.update({
