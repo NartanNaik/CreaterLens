@@ -5,7 +5,8 @@ import axios from "axios";
 //   2. Instagram's public embed page (no key needed): gives the username, caption and thumbnail when
 //      Instagram allows the request. Instagram sometimes blocks server (datacenter) traffic, so this is best-effort.
 const RAPID_API_KEY = process.env.RAPIDAPI_KEY || "";
-const RAPID_API_HOST = process.env.RAPIDAPI_HOST || "instagram-scraper-api2.p.rapidapi.com";
+const RAPID_API_HOST = process.env.RAPIDAPI_HOST || "instagram-scraper-stable-api.p.rapidapi.com";
+const IS_STABLE_API = /stable-api/i.test(RAPID_API_HOST);
 
 const BROWSER_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
@@ -100,15 +101,89 @@ const scrapeEmbed = async (cleanUrl) => {
   }
 };
 
-const callRapidApi = (cleanUrl, timeout) =>
-  axios.get(`https://${RAPID_API_HOST}/v1/post_info`, {
-    params: { code_or_id_or_url: cleanUrl },
-    headers: {
-      "X-RapidAPI-Key": RAPID_API_KEY,
-      "X-RapidAPI-Host": RAPID_API_HOST
-    },
-    timeout
-  });
+// ---- RapidAPI ----
+// Walks any JSON reply and returns the first value found under one of the given key names.
+const deepFind = (node, keys, depth = 0) => {
+  if (!node || typeof node !== "object" || depth > 6) return undefined;
+  for (const key of keys) {
+    if (node[key] !== undefined && node[key] !== null && node[key] !== "") return node[key];
+  }
+  for (const value of Object.values(node)) {
+    const found = deepFind(value, keys, depth + 1);
+    if (found !== undefined) return found;
+  }
+  return undefined;
+};
+
+// Different RapidAPI Instagram services name things differently; read the common shapes.
+const readPost = (data) => {
+  const ownerObj = deepFind(data, ["owner", "user"]);
+  const username = (ownerObj && typeof ownerObj === "object" ? ownerObj.username : "") || deepFind(data, ["username"]) || "";
+
+  let caption = deepFind(data, ["caption"]);
+  if (caption && typeof caption === "object") caption = caption.text || "";
+  if (!caption) {
+    const edges = deepFind(data, ["edge_media_to_caption"]);
+    caption = edges?.edges?.[0]?.node?.text || "";
+  }
+
+  const candidates = deepFind(data, ["candidates"]);
+  const thumbnail =
+    deepFind(data, ["thumbnail_url", "thumbnail_src", "display_url"]) ||
+    (Array.isArray(candidates) ? candidates[0]?.url : "") ||
+    "";
+
+  const video = deepFind(data, ["video_url"]) || "";
+  const followers = ownerObj && typeof ownerObj === "object" ? ownerObj.follower_count : undefined;
+
+  return {
+    username: typeof username === "string" ? username : "",
+    caption: typeof caption === "string" ? caption : "",
+    thumbnailUrl: typeof thumbnail === "string" ? thumbnail : "",
+    videoUrl: typeof video === "string" ? video : "",
+    followers,
+    likes: deepFind(data, ["like_count"]),
+    comments: deepFind(data, ["comment_count"]),
+    views: deepFind(data, ["view_count", "play_count", "video_view_count"])
+  };
+};
+
+const callRapidApi = async (cleanUrl, timeout) => {
+  const headers = {
+    "X-RapidAPI-Key": RAPID_API_KEY,
+    "X-RapidAPI-Host": RAPID_API_HOST
+  };
+
+  let response;
+  if (IS_STABLE_API) {
+    // "Instagram Scraper Stable API": POST /get_media_data.php with a form body
+    const body = new URLSearchParams({
+      reel_post_code_or_url: cleanUrl,
+      type: /\/(?:reel|reels|tv)\//i.test(cleanUrl) ? "reel" : "post"
+    });
+    response = await axios.post(`https://${RAPID_API_HOST}/get_media_data.php`, body.toString(), {
+      headers: { ...headers, "Content-Type": "application/x-www-form-urlencoded" },
+      timeout
+    });
+  } else {
+    // Older "Instagram Scraper API 2" style
+    response = await axios.get(`https://${RAPID_API_HOST}/v1/post_info`, {
+      params: { code_or_id_or_url: cleanUrl },
+      headers,
+      timeout
+    });
+  }
+
+  const post = readPost(response.data?.data || response.data || {});
+
+  if (!post.username && !post.caption && !post.thumbnailUrl) {
+    // Reached the API but could not read anything: log the reply's shape so the mapping can be fixed.
+    const keys = Object.keys(response.data || {}).slice(0, 12).join(", ");
+    console.warn(`[Scraper] RapidAPI reply had no username/caption/thumbnail. Top-level keys: ${keys}`);
+  }
+
+  return post;
+};
 
 /**
  * 1. Fast extraction for the Staging Queue (share from the app)
@@ -119,18 +194,19 @@ export const extractBasicInfo = async (reelUrl) => {
 
   if (RAPID_API_KEY) {
     try {
-      const response = await callRapidApi(cleanUrl, 4000);
-      const data = response.data?.data || {};
-      const username = data.user?.username || fallbackUser;
+      const post = await callRapidApi(cleanUrl, 8000);
+      const username = post.username || (fallbackUser !== "Unknown" ? fallbackUser : "");
 
-      return {
-        url: cleanUrl,
-        usernames: username !== "Unknown" ? [username] : [],
-        thumbnailUrl: data.thumbnail_url || "",
-        caption: data.caption?.text || ""
-      };
-    } catch {
-      console.warn(`[Scraper] RapidAPI failed for ${cleanUrl}, trying the public embed page.`);
+      if (username || post.caption || post.thumbnailUrl) {
+        return {
+          url: cleanUrl,
+          usernames: username ? [username] : [],
+          thumbnailUrl: post.thumbnailUrl,
+          caption: post.caption
+        };
+      }
+    } catch (error) {
+      console.warn(`[Scraper] RapidAPI failed for ${cleanUrl} (${error.response?.status || error.message}), trying the public embed page.`);
     }
   }
 
@@ -159,30 +235,31 @@ export const fetchFullReelMedia = async (reelUrl, specificUsername = "") => {
 
   if (RAPID_API_KEY) {
     try {
-      const response = await callRapidApi(cleanUrl, 6000);
-      const data = response.data?.data || {};
-      const trueUsername = data.user?.username || fallbackUser;
+      const post = await callRapidApi(cleanUrl, 10000);
+      const trueUsername = post.username || (fallbackUser !== "Unknown" ? fallbackUser : "");
 
-      let finalCaption = data.caption?.text || "";
+      if (trueUsername || post.caption || post.thumbnailUrl) {
+        let finalCaption = post.caption || "";
 
-      if (data.user) {
-        finalCaption += `\n\n[SYSTEM - Deep Scrape Data]:
-        - True Username: ${trueUsername}
-        - Total Followers: ${data.user.follower_count || "Unknown"}
-        - Post Likes: ${data.like_count || 0}
-        - Post Comments: ${data.comment_count || 0}
-        - Post Views: ${data.view_count || data.play_count || 0}`;
+        if (post.followers !== undefined || post.likes !== undefined || post.views !== undefined) {
+          finalCaption += `\n\n[SYSTEM - Deep Scrape Data]:
+        - True Username: ${trueUsername || "Unknown"}
+        - Total Followers: ${post.followers ?? "Unknown"}
+        - Post Likes: ${post.likes ?? 0}
+        - Post Comments: ${post.comments ?? 0}
+        - Post Views: ${post.views ?? 0}`;
+        }
+
+        return {
+          url: cleanUrl,
+          username: trueUsername,
+          caption: finalCaption,
+          thumbnailUrl: post.thumbnailUrl,
+          videoUrl: post.videoUrl || post.thumbnailUrl
+        };
       }
-
-      return {
-        url: cleanUrl,
-        username: trueUsername,
-        caption: finalCaption,
-        thumbnailUrl: data.thumbnail_url || "",
-        videoUrl: data.video_url || data.thumbnail_url || ""
-      };
     } catch (error) {
-      console.error("[Scraper] RapidAPI deep fetch failed:", error.message);
+      console.error(`[Scraper] RapidAPI deep fetch failed (${error.response?.status || error.message}).`);
     }
   }
 
