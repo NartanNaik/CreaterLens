@@ -88,6 +88,76 @@ const EyeOffIcon = () => (
   </svg>
 );
 
+// Link cell: "View" button when a link exists, plus a pencil to change it; an empty link is an input right away.
+function LinkCell({ url, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const savedRef = useRef(false);
+
+  const startEdit = () => {
+    savedRef.current = false;
+    setDraft(url || '');
+    setEditing(true);
+  };
+
+  const commit = () => {
+    if (savedRef.current) return;
+    savedRef.current = true;
+
+    const next = draft.trim();
+    setEditing(false);
+    if (next === (url || '')) return;
+
+    if (next !== '' && !/^https?:\/\/\S+$/i.test(next)) {
+      toast.error('Enter a full link starting with http:// or https://');
+      return;
+    }
+    onSave(next);
+  };
+
+  const cancel = () => {
+    savedRef.current = true;
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <input
+        type="text"
+        autoFocus
+        className="link-cell-input"
+        placeholder="Paste a link (https://...)"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commit();
+          else if (e.key === 'Escape') cancel();
+        }}
+      />
+    );
+  }
+
+  if (!url) {
+    return (
+      <button type="button" className="link-cell-empty" onClick={startEdit}>
+        Add link
+      </button>
+    );
+  }
+
+  return (
+    <div className="link-cell">
+      <a href={url} target="_blank" rel="noreferrer" className="action-btn link-btn">
+        <ExternalLinkIcon /> View
+      </a>
+      <button type="button" className="link-cell-edit" onClick={startEdit} aria-label="Edit link" title="Edit link">
+        <EditIcon />
+      </button>
+    </div>
+  );
+}
+
 const BATCH_SIZE = 10;
 
 let globalProfilesCache = null;
@@ -528,16 +598,10 @@ export default function ProfileDashboard() {
     if (col.columnId === 'link') {
       return (
         <td key={col.columnId}>
-          {profile.sourceUrl ? (
-            <a
-              href={profile.sourceUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="action-btn link-btn"
-            >
-              <ExternalLinkIcon /> View
-            </a>
-          ) : '-'}
+          <LinkCell
+            url={profile.sourceUrl}
+            onSave={(val) => handleCellEdit(profile.id, 'sourceUrl', val)}
+          />
         </td>
       );
     }

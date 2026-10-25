@@ -830,6 +830,14 @@ a.dropdown-item { text-decoration: none; }
 .tour-next { background: var(--primary-color); border: 1px solid var(--primary-color); color: #ffffff; }
 .tour-next:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
 
+/* ===== Link cell (dashboard) ===== */
+.link-cell { display: inline-flex; align-items: center; gap: 6px; }
+.link-cell-edit { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; background: transparent; border: 1px solid transparent; border-radius: var(--radius-sm); color: var(--text-muted); cursor: pointer; }
+.link-cell-edit:hover { background: var(--hover-bg); color: var(--text-main); }
+.link-cell-empty { padding: 4px 10px; background: transparent; border: 1px dashed var(--glass-border-strong); border-radius: var(--radius-sm); color: var(--text-faint); font-size: 13px; cursor: pointer; }
+.link-cell-empty:hover { border-color: var(--accent); color: var(--primary-soft); }
+.link-cell-input { min-width: 220px; height: 32px; padding: 0 8px; }
+
 /* Respect "reduce motion" (must stay after every animation rule above) */
 @media (prefers-reduced-motion: reduce) {
   .bg-watermark-logo, .brand-logo, .login-logo, .splash-logo, .login-spinner, .tour-spot::after, .tour-tail { animation: none; }

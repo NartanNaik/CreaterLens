@@ -24,8 +24,6 @@ const MAX_CAPTION_LENGTH = 2000;
 // Server-side fetches (thumbnails -> AI) are only allowed against Instagram's own CDNs.
 const MEDIA_HOST_REGEX = /(^|\.)(cdninstagram\.com|fbcdn\.net|instagram\.com)$/i;
 
-// Account types that get auto-rejected.
-const REJECT_ACCOUNT_REGEX = /\b(male|man|brand|business|company)\b/i;
 
 // ---------- helpers ----------
 const cleanHandle = (raw) => {
@@ -466,6 +464,18 @@ export const processStagingItemController = async (req, res) => {
       console.error("Failed to fetch user settings for AI prompt:", err?.message || err);
     }
 
+    // Nothing to analyse (no caption and no readable thumbnail): asking the AI would only produce a guess,
+    // and the auto-filter below could then delete a real creator. Keep the row so the user can fix the
+    // username and scan it again.
+    if (!String(targetData.caption || "").trim() && !thumbnailUrl) {
+      await markFailed(id, userId);
+      return res.status(422).json({
+        success: false,
+        status: "failed",
+        error: "No caption or thumbnail could be read for this reel. Set the username and scan again."
+      });
+    }
+
     let aiResult = null;
 
     try {
@@ -496,17 +506,17 @@ export const processStagingItemController = async (req, res) => {
     // Determine if we need to auto-reject based on AI's understanding
     const accountType = String(aiResult.customCategories?.accountType || aiResult.accountType || "").toLowerCase().trim();
 
-    if (REJECT_ACCOUNT_REGEX.test(accountType)) {
-      console.log(`[Auto-Filter] Automatically rejected ${targetData.username} (Classified as: ${accountType})`);
-      await docRef.delete();
-      return res.status(200).json({
-        success: true,
-        message: "Auto-deleted: Male or Brand detected",
-        deleted: true
-      });
-    }
+    let resolvedUsername = cleanHandle(targetData.username) || itemData.username || "";
 
-    const resolvedUsername = cleanHandle(targetData.username) || itemData.username || "";
+    // The import sometimes has no owner ("Unknown"). Take the AI's handle for it, but ONLY when that exact
+    // handle is written in the caption; an invented handle would be worse than "Unknown".
+    if (/^unknown$/i.test(resolvedUsername) || !resolvedUsername) {
+      const aiHandle = cleanHandle(aiResult.username);
+      const captionText = String(targetData.caption || itemData.caption || "").toLowerCase();
+      if (aiHandle && !/^unknown$/i.test(aiHandle) && captionText.includes(aiHandle.toLowerCase())) {
+        resolvedUsername = aiHandle;
+      }
+    }
 
     const updates = {
       username: resolvedUsername,
@@ -514,6 +524,7 @@ export const processStagingItemController = async (req, res) => {
       videoPreviewUrl: videoUrl,
       thumbnailUrl,
       status: "analyzed",
+      aiAccountType: accountType ? accountType.charAt(0).toUpperCase() + accountType.slice(1) : "Unknown", // kept for reference; nothing is auto-deleted
       customCategories: aiResult.customCategories || {} // All extracted attributes stored cleanly here
     };
 
